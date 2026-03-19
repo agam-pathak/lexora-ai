@@ -13,7 +13,7 @@ import { redirect } from "next/navigation";
 
 import { withFileLock } from "@/lib/file-lock";
 import type { AuthSession } from "@/lib/types";
-import { ensureSmartDocRoot, SMARTDOC_ROOT } from "@/lib/storage";
+import { ensureLexoraRoot, LEXORA_ROOT } from "@/lib/storage";
 
 type StoredUser = {
   id: string;
@@ -39,19 +39,19 @@ type CreateUserInput = {
   password: string;
 };
 
-const USERS_PATH = path.join(SMARTDOC_ROOT, "users.json");
-export const SESSION_COOKIE_NAME = "smartdoc_session";
+const USERS_PATH = path.join(LEXORA_ROOT, "users.json");
+export const SESSION_COOKIE_NAME = "lexora_session";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7;
 const RESET_TOKEN_DURATION_MS = 1000 * 60 * 30;
 const AUTH_SECRET =
-  process.env.SMARTDOC_AUTH_SECRET ?? "smartdoc-dev-secret-change-me";
+  process.env.LEXORA_AUTH_SECRET ?? "lexora-dev-secret-change-me";
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
 function normalizeName(value: string) {
-  return value.replace(/\s+/g, " ").trim().slice(0, 80) || "SmartDoc member";
+  return value.replace(/\s+/g, " ").trim().slice(0, 80) || "Lexora member";
 }
 
 function toBase64Url(value: Buffer | string) {
@@ -167,7 +167,7 @@ async function readUsersStore() {
 
 async function writeUsersStore(users: StoredUser[]) {
   await withFileLock(USERS_PATH, async () => {
-    await ensureSmartDocRoot();
+    await ensureLexoraRoot();
     await mkdir(path.dirname(USERS_PATH), { recursive: true });
 
     const store: UsersStore = {
