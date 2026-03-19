@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SmartDoc AI
 
-## Getting Started
+SmartDoc AI is a Next.js 16 document intelligence workspace built around a retrieval-augmented generation pipeline for PDFs.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 App Router
+- React 19 + TypeScript
+- Tailwind CSS
+- `react-pdf` for document viewing
+- `pdf-parse` for PDF text extraction
+- Groq embeddings when available, with local hashed embedding fallback
+- Groq chat completions with `llama-3.1-8b-instant`
+- Local filesystem vector index stored under `.smartdoc/`
+- Local password auth with signed httpOnly sessions
+- Per-user document and conversation workspaces
+
+## Architecture
+
+1. Upload a PDF through `/api/upload`
+2. Save the file to `public/uploads/`
+3. Parse PDF text
+4. Split the text into 1000-character chunks with 200-character overlap
+5. Generate embeddings for each chunk
+6. Persist chunk vectors and metadata in a local index
+7. Embed user questions
+8. Retrieve the top matching chunks
+9. Build grounded context for the LLM
+10. Return the Groq answer to the chat UI
+
+## Environment
+
+Create `.env.local` from `.env.example` and set:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+GROQ_API_KEY=your_groq_api_key
+GROQ_CHAT_MODEL=llama-3.1-8b-instant
+GROQ_EMBEDDING_MODEL=nomic-embed-text-v1_5
+SMARTDOC_EMBEDDINGS_PROVIDER=auto
+SMARTDOC_AUTH_SECRET=change-this-to-a-long-random-secret
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open `http://localhost:3000`.
 
-## Learn More
+## Routes
 
-To learn more about Next.js, take a look at the following resources:
+- `/upload` uploads and indexes new PDFs
+- `/chat` opens the two-panel document viewer and chat workspace
+- `/auth` handles sign in, sign up, forgot password, and reset
+- `/api/upload` handles secure PDF upload and indexing
+- `/api/files` returns indexed documents
+- `/api/index` rebuilds the vector index
+- `/api/chat` performs retrieval-augmented question answering
+- `/api/auth/*` handles password auth, session, and reset flows
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Uploaded PDFs are validated for type and size.
+- Indexed vectors and saved threads are stored per user under `.smartdoc/users/<userId>/`.
+- If your Groq account does not expose embeddings, SmartDoc automatically falls back to `local-hash-v1` for indexing and retrieval.
+- The chat prompt is grounded strictly to retrieved document context.
+- Localhost password reset returns a preview recovery link because no mail provider is configured in this project.

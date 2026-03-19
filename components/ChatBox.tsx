@@ -1,0 +1,728 @@
+"use client";
+
+import {
+  type KeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { ALL_DOCUMENTS_SCOPE_ID } from "@/lib/chat-constants";
+import type {
+  ChatSource,
+  ConversationMessage,
+  ConversationSummary,
+  IndexedDocument,
+} from "@/lib/types";
+
+import ChatComposer from "./ChatComposer";
+import ChatHeader from "./ChatHeader";
+import MessageBubble from "./MessageBubble";
+import ThreadHistory from "./ThreadHistory";
+import TypingIndicator from "./TypingIndicator";
+
+type SearchMode = "document" | "all";
+
+type ChatBoxProps = {
+  documents: IndexedDocument[];
+  selectedDocumentId: string;
+  onDocumentChange: (documentId: string) => void;
+  onSourceSelect?: (source: ChatSource) => void;
+};
+
+function createAssistantIntro(
+  document: IndexedDocument | null,
+  searchMode: SearchMode,
+  documentCount: number,
+): ConversationMessage {
+  if (documentCount === 0) {
+    return {
+      id: "assistant-intro",
+      role: "assistant",
+      text: "Upload a PDF to start a grounded conversation.",
+      createdAt: new Date(0).toISOString(),
+    };
+  }
+
+  if (searchMode === "all") {
+    return {
+      id: "assistant-intro",
+      role: "assistant",
+      text: `All-documents retrieval is active across ${documentCount} indexed ${
+        documentCount === 1 ? "file" : "files"
+      }. Keep a viewer document open on the left while answers can cite any source in the library.`,
+      createdAt: new Date(0).toISOString(),
+    };
+  }
+
+  return {
+    id: "assistant-intro",
+    role: "assistant",
+    text: document
+      ? `Ready. Ask about "${document.name}" and I will answer from retrieved evidence only.`
+      : "Select a document to start a grounded conversation.",
+    createdAt: new Date(0).toISOString(),
+  };
+}
+
+function createPromptChips(
+  document: IndexedDocument | null,
+  searchMode: SearchMode,
+  documentCount: number,
+) {
+  if (documentCount === 0) {
+    return [];
+  }
+
+  if (searchMode === "all") {
+    return [
+      "Summarize the key ideas across all indexed documents.",
+      "Which document contains the strongest evidence for the main topic?",
+      "Compare the most important details across the indexed PDFs.",
+      "What common themes or repeated entities appear across the library?",
+    ];
+  }
+
+  if (!document) {
+    return [];
+  }
+
+  return [
+    `Give me a crisp summary of "${document.name}".`,
+    "List the most important facts and entities.",
+    "What are the strongest highlights in this document?",
+    "Which details matter most for decision-making?",
+  ];
+}
+
+export default function ChatBox({
+  documents,
+  selectedDocumentId,
+  onDocumentChange,
+  onSourceSelect,
+}: ChatBoxProps) {
+  const [searchMode, setSearchMode] = useState<SearchMode>("document");
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [conversationSummaries, setConversationSummaries] = useState<
+    ConversationSummary[]
+  >([]);
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [loadingConversationDetail, setLoadingConversationDetail] =
+    useState(false);
+  const [conversationError, setConversationError] = useState("");
+  const [deletingConversationId, setDeletingConversationId] = useState("");
+  const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  const selectedConversationIdRef = useRef(selectedConversationId);
+
+  const selectedDocument =
+    documents.find((document) => document.id === selectedDocumentId) ?? null;
+  const conversationScopeId =
+    searchMode === "all"
+      ? ALL_DOCUMENTS_SCOPE_ID
+      : (selectedDocument?.id ?? "");
+  const canAskQuestion =
+    searchMode === "all" ? documents.length > 0 : selectedDocument !== null;
+  const promptChips = useMemo(
+    () => createPromptChips(selectedDocument, searchMode, documents.length),
+    [documents.length, searchMode, selectedDocument],
+  );
+  const displayedMessages = useMemo(
+    () =>
+      messages.length > 0
+        ? messages
+        : [
+            createAssistantIntro(
+              selectedDocument,
+              searchMode,
+              documents.length,
+            ),
+          ],
+    [documents.length, messages, searchMode, selectedDocument],
+  );
+  const activeConversation =
+    conversationSummaries.find(
+      (conversation) => conversation.id === selectedConversationId,
+    ) ?? null;
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    setQuestion("");
+    setConversationError("");
+  }, [searchMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadConversationSummaries() {
+      if (!conversationScopeId) {
+        setConversationSummaries([]);
+        setSelectedConversationId("");
+        setMessages([]);
+        return;
+      }
+
+      setConversationSummaries([]);
+      setSelectedConversationId("");
+      setMessages([]);
+      setLoadingConversations(true);
+      setConversationError("");
+
+      try {
+        const response = await fetch(
+          `/api/conversations?documentId=${encodeURIComponent(conversationScopeId)}`,
+          { cache: "no-store" },
+        );
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to load conversations.");
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextSummaries: ConversationSummary[] =
+          data.conversations ?? [];
+        const nextConversationId =
+          nextSummaries.find(
+            (conversation) =>
+              conversation.id === selectedConversationIdRef.current,
+          )?.id ??
+          nextSummaries[0]?.id ??
+          "";
+
+        setConversationSummaries(nextSummaries);
+        setSelectedConversationId(nextConversationId);
+        setQuestion("");
+
+        if (!nextConversationId) {
+          setMessages([]);
+          return;
+        }
+
+        setLoadingConversationDetail(true);
+
+        const detailResponse = await fetch(
+          `/api/conversations/${nextConversationId}`,
+          {
+            cache: "no-store",
+          },
+        );
+        const detailData = await detailResponse.json();
+
+        if (!detailResponse.ok) {
+          throw new Error(
+            detailData.error || "Unable to load the conversation.",
+          );
+        }
+
+        if (!cancelled) {
+          setMessages(detailData.conversation?.messages ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setConversationError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load conversations.",
+          );
+          setConversationSummaries([]);
+          setSelectedConversationId("");
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingConversations(false);
+          setLoadingConversationDetail(false);
+        }
+      }
+    }
+
+    void loadConversationSummaries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationScopeId]);
+
+  useEffect(() => {
+    endOfMessagesRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [displayedMessages, loading]);
+
+  async function loadConversationDetail(conversationId: string) {
+    setLoadingConversationDetail(true);
+    setConversationError("");
+    setSelectedConversationId(conversationId);
+
+    try {
+      const response = await fetch(
+        `/api/conversations/${conversationId}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to load the conversation.",
+        );
+      }
+
+      setMessages(data.conversation?.messages ?? []);
+    } catch (error) {
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load the conversation.",
+      );
+    } finally {
+      setLoadingConversationDetail(false);
+    }
+  }
+
+  async function createNewConversation() {
+    if (!conversationScopeId) {
+      return;
+    }
+
+    setLoadingConversations(true);
+    setConversationError("");
+
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documentId: conversationScopeId,
+          title:
+            searchMode === "all"
+              ? "All documents thread"
+              : `${selectedDocument?.name ?? "Document"} thread`,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to create a conversation.",
+        );
+      }
+
+      const nextConversation: ConversationSummary = data.conversation;
+      setConversationSummaries((currentSummaries) => [
+        nextConversation,
+        ...currentSummaries.filter(
+          (conversation) => conversation.id !== nextConversation.id,
+        ),
+      ]);
+      setSelectedConversationId(nextConversation.id);
+      setMessages([]);
+      setQuestion("");
+    } catch (error) {
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create a conversation.",
+      );
+    } finally {
+      setLoadingConversations(false);
+    }
+  }
+
+  async function renameConversationById(
+    conversationId: string,
+    currentTitle: string,
+  ) {
+    const nextTitle = window.prompt("Rename thread", currentTitle)?.trim();
+
+    if (!nextTitle || nextTitle === currentTitle) {
+      return;
+    }
+
+    setConversationError("");
+
+    try {
+      const response = await fetch(
+        `/api/conversations/${conversationId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: nextTitle,
+          }),
+        },
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to rename the conversation.",
+        );
+      }
+
+      const renamedConversation: ConversationSummary = data.conversation;
+
+      setConversationSummaries((currentSummaries) =>
+        currentSummaries.map((conversation) =>
+          conversation.id === renamedConversation.id
+            ? renamedConversation
+            : conversation,
+        ),
+      );
+    } catch (error) {
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to rename the conversation.",
+      );
+    }
+  }
+
+  async function deleteConversationById(conversationId: string) {
+    setDeletingConversationId(conversationId);
+    setConversationError("");
+
+    try {
+      const response = await fetch(
+        `/api/conversations/${conversationId}`,
+        {
+          method: "DELETE",
+        },
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to delete the conversation.",
+        );
+      }
+
+      const remainingSummaries = conversationSummaries.filter(
+        (conversation) => conversation.id !== conversationId,
+      );
+
+      setConversationSummaries(remainingSummaries);
+
+      if (selectedConversationId === conversationId) {
+        const nextConversationId = remainingSummaries[0]?.id ?? "";
+        setSelectedConversationId(nextConversationId);
+
+        if (nextConversationId) {
+          await loadConversationDetail(nextConversationId);
+        } else {
+          setMessages([]);
+        }
+      }
+    } catch (error) {
+      setConversationError(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete the conversation.",
+      );
+    } finally {
+      setDeletingConversationId("");
+    }
+  }
+
+  async function sendQuestion(prefilledQuestion?: string) {
+    const trimmedQuestion = (prefilledQuestion ?? question).trim();
+
+    if (!trimmedQuestion || !canAskQuestion) {
+      return;
+    }
+
+    const userMessage: ConversationMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: trimmedQuestion,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((currentMessages) => [...currentMessages, userMessage]);
+    setQuestion("");
+    setLoading(true);
+    setConversationError("");
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: trimmedQuestion,
+          documentId: selectedDocument?.id ?? "",
+          conversationId: selectedConversationId || undefined,
+          searchMode,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || "The document question failed.",
+        );
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+
+      if (contentType.includes("text/event-stream") && response.body) {
+        // Streaming SSE response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = "";
+        let sseBuffer = "";
+
+        // Add initial assistant message
+        setMessages((currentMessages) => [
+          ...currentMessages,
+          {
+            id: assistantMessageId,
+            role: "assistant",
+            text: "",
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+
+        let finalSources: ChatSource[] = [];
+        let finalConversation: ConversationSummary | undefined;
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split("\n");
+          sseBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) {
+              continue;
+            }
+
+            const payload = line.slice(6).trim();
+
+            if (!payload || payload === "[DONE]") {
+              continue;
+            }
+
+            try {
+              const event = JSON.parse(payload);
+
+              if (event.type === "sources") {
+                finalSources = event.sources ?? [];
+                
+                // Immediately push sources to UI
+                setMessages((currentMessages) =>
+                  currentMessages.map((message) =>
+                    message.id === assistantMessageId
+                      ? { ...message, sources: finalSources }
+                      : message,
+                  ),
+                );
+              } else if (event.type === "delta") {
+                accumulatedText += event.text ?? "";
+                
+                // Stream text changes
+                setMessages((currentMessages) =>
+                  currentMessages.map((message) =>
+                    message.id === assistantMessageId
+                      ? { ...message, text: accumulatedText }
+                      : message,
+                  ),
+                );
+              } else if (event.type === "done") {
+                finalConversation = event.conversation;
+                if (event.answer) {
+                  accumulatedText = event.answer;
+                }
+              }
+            } catch {
+              // Skip malformed SSE event
+            }
+          }
+        }
+
+        // Final update with sources
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  text:
+                    accumulatedText ||
+                    "The information is not available in the document.",
+                  sources: finalSources,
+                }
+              : message,
+          ),
+        );
+
+        if (finalConversation) {
+          setConversationSummaries((currentSummaries) => [
+            finalConversation!,
+            ...currentSummaries.filter(
+              (existingConversation) =>
+                existingConversation.id !== finalConversation!.id,
+            ),
+          ]);
+          setSelectedConversationId(finalConversation.id);
+        }
+      } else {
+        // Fallback: regular JSON response
+        const data = await response.json();
+        const conversation: ConversationSummary | undefined =
+          data.conversation;
+
+        if (conversation) {
+          setConversationSummaries((currentSummaries) => [
+            conversation,
+            ...currentSummaries.filter(
+              (existingConversation) =>
+                existingConversation.id !== conversation.id,
+            ),
+          ]);
+          setSelectedConversationId(conversation.id);
+        }
+
+        setMessages((currentMessages) => [
+          ...currentMessages,
+          {
+            id: assistantMessageId,
+            role: "assistant",
+            text:
+              data.answer ||
+              "The information is not available in the document.",
+            sources: data.sources ?? [],
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while asking the document.";
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          text: message,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      setConversationError(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleComposerKeyDown(
+    event: KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void sendQuestion();
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full min-h-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]">
+      <ChatHeader
+        documents={documents}
+        selectedDocumentId={selectedDocumentId}
+        selectedDocument={selectedDocument}
+        searchMode={searchMode}
+        conversationSummaries={conversationSummaries}
+        activeConversation={activeConversation}
+        canAskQuestion={canAskQuestion}
+        promptChips={promptChips}
+        messages={messages}
+        onDocumentChange={onDocumentChange}
+        onSearchModeChange={setSearchMode}
+        onPromptChipClick={(prompt) => setQuestion(prompt)}
+      />
+
+      <ThreadHistory
+        conversationSummaries={conversationSummaries}
+        selectedConversationId={selectedConversationId}
+        searchMode={searchMode}
+        loadingConversations={loadingConversations}
+        deletingConversationId={deletingConversationId}
+        conversationScopeId={conversationScopeId}
+        onLoadConversation={(id) => void loadConversationDetail(id)}
+        onCreateNew={() => void createNewConversation()}
+        onRename={(id, title) => void renameConversationById(id, title)}
+        onDelete={(id) => void deleteConversationById(id)}
+      />
+
+      <div className="min-h-0 flex-1 px-5 py-5 sm:px-6">
+        <div className="panel-soft relative flex h-full min-h-[380px] flex-col overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(103,232,249,0.08),transparent)]" />
+
+          {loadingConversationDetail ? (
+            <div className="relative border-b border-white/8 px-4 py-3 text-sm text-slate-300 sm:px-5">
+              Loading thread...
+            </div>
+          ) : null}
+
+          <div className="relative flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+            {displayedMessages.map((message, index) => (
+              <MessageBubble
+                key={message.id}
+                role={message.role}
+                text={message.text}
+                sources={message.sources}
+                highlight={
+                  index === displayedMessages.length - 1 &&
+                  message.role === "assistant"
+                }
+                onSourceSelect={onSourceSelect}
+                onFollowUpClick={(prompt) => void sendQuestion(prompt)}
+              />
+            ))}
+
+            {loading ? <TypingIndicator /> : null}
+            <div ref={endOfMessagesRef} />
+          </div>
+        </div>
+      </div>
+
+      <ChatComposer
+        question={question}
+        searchMode={searchMode}
+        selectedDocument={selectedDocument}
+        activeConversation={activeConversation}
+        canAskQuestion={canAskQuestion}
+        loading={loading}
+        conversationError={conversationError}
+        onQuestionChange={setQuestion}
+        onSend={() => void sendQuestion()}
+        onKeyDown={handleComposerKeyDown}
+      />
+    </div>
+  );
+}
