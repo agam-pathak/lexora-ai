@@ -1,4 +1,4 @@
-import { Bot, FileText, UserRound, ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, Search } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -119,15 +119,16 @@ export default function MessageBubble({
       <div className="text-sm leading-relaxed text-slate-200">
         <ReactMarkdown
           components={{
-            p: ({ children }: any) => <p className="mb-3 last:mb-0">{children}</p>,
-            ul: ({ children }: any) => <ul className="mb-3 ml-4 list-disc space-y-1 text-slate-300">{children}</ul>,
-            ol: ({ children }: any) => <ol className="mb-3 ml-4 list-decimal space-y-1 text-slate-300">{children}</ol>,
-            li: ({ children }: any) => <li>{children}</li>,
-            h1: ({ children }: any) => <h1 className="mb-2 mt-4 text-base font-bold text-white">{children}</h1>,
-            h2: ({ children }: any) => <h2 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h2>,
-            h3: ({ children }: any) => <h3 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h3>,
-            strong: ({ children }: any) => <strong className="font-semibold text-white">{children}</strong>,
-            code: ({ children }: any) => <code className="rounded bg-slate-800/60 px-1.5 py-0.5 text-xs font-medium text-cyan-200">{children}</code>,
+            p: ({ children }: { children?: React.ReactNode }) => <p className="mb-3 last:mb-0">{children}</p>,
+            ul: ({ children }: { children?: React.ReactNode }) => <ul className="mb-3 ml-4 list-disc space-y-1 text-slate-300">{children}</ul>,
+            ol: ({ children }: { children?: React.ReactNode }) => <ol className="mb-3 ml-4 list-decimal space-y-1 text-slate-300">{children}</ol>,
+            li: ({ children }: { children?: React.ReactNode }) => <li>{children}</li>,
+            h1: ({ children }: { children?: React.ReactNode }) => <h1 className="mb-2 mt-4 text-base font-bold text-white">{children}</h1>,
+            h2: ({ children }: { children?: React.ReactNode }) => <h2 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h2>,
+            h3: ({ children }: { children?: React.ReactNode }) => <h3 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h3>,
+            strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-white">{children}</strong>,
+            code: ({ children }: { children?: React.ReactNode }) => <code className="rounded bg-slate-800/60 px-1.5 py-0.5 text-xs font-medium text-cyan-200">{children}</code>,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             text: ({ node }: any) => {
               const val = node.value;
               const parts = val.split(/(\[\d+\])/g);

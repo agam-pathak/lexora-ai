@@ -1,6 +1,6 @@
-# SmartDoc AI
+# Lexora AI
 
-SmartDoc AI is a Next.js 16 document intelligence workspace built around a retrieval-augmented generation pipeline for PDFs.
+Lexora AI is a Next.js 16 document intelligence workspace built around a retrieval-augmented generation pipeline for PDFs.
 
 ## Stack
 
@@ -11,7 +11,7 @@ SmartDoc AI is a Next.js 16 document intelligence workspace built around a retri
 - `pdf-parse` for PDF text extraction
 - Groq embeddings when available, with local hashed embedding fallback
 - Groq chat completions with `llama-3.1-8b-instant`
-- Local filesystem vector index stored under `.smartdoc/`
+- Local filesystem vector index stored under `.lexora/`
 - Local password auth with signed httpOnly sessions
 - Per-user document and conversation workspaces
 
@@ -36,8 +36,8 @@ Create `.env.local` from `.env.example` and set:
 GROQ_API_KEY=your_groq_api_key
 GROQ_CHAT_MODEL=llama-3.1-8b-instant
 GROQ_EMBEDDING_MODEL=nomic-embed-text-v1_5
-SMARTDOC_EMBEDDINGS_PROVIDER=auto
-SMARTDOC_AUTH_SECRET=change-this-to-a-long-random-secret
+LEXORA_EMBEDDINGS_PROVIDER=auto
+LEXORA_AUTH_SECRET=change-this-to-a-long-random-secret
 ```
 
 ## Run
@@ -63,7 +63,7 @@ Open `http://localhost:3000`.
 ## Notes
 
 - Uploaded PDFs are validated for type and size.
-- Indexed vectors and saved threads are stored per user under `.smartdoc/users/<userId>/`.
-- If your Groq account does not expose embeddings, SmartDoc automatically falls back to `local-hash-v1` for indexing and retrieval.
+- Indexed vectors and saved threads are stored per user under `.lexora/users/<userId>/`.
+- If your Groq account does not expose embeddings, Lexora AI automatically falls back to `local-hash-v1` for indexing and retrieval.
 - The chat prompt is grounded strictly to retrieved document context.
 - Localhost password reset returns a preview recovery link because no mail provider is configured in this project.

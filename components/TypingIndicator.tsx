@@ -15,7 +15,7 @@ export default function TypingIndicator() {
 
   useEffect(() => {
     const intervals = [300, 900, 1800]; // Progressively move through steps
-    let timeouts: NodeJS.Timeout[] = [];
+    const timeouts: NodeJS.Timeout[] = [];
 
     intervals.forEach((delay, index) => {
       const timeout = setTimeout(() => {
@@ -37,7 +37,7 @@ export default function TypingIndicator() {
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-            SmartDoc Engine
+            Lexora Engine
           </span>
           <span className="text-sm font-medium text-slate-200">
             {steps[stepIndex].text}...

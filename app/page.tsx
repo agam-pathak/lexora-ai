@@ -2,15 +2,10 @@ import {
   Activity,
   ArrowRight,
   Database,
-  FileSearch,
-  FileStack,
-  MessageSquare,
   ShieldCheck,
   Sparkles,
   TrendingUp,
   Zap,
-  Globe,
-  Clock,
   CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
@@ -88,7 +83,7 @@ export default async function HomePage() {
         <div className="space-y-8">
            <div className="space-y-2">
               <h2 className="text-3xl font-bold text-white">Advanced Extraction Flow</h2>
-              <p className="text-slate-500 max-w-lg text-lg leading-relaxed">SmartDoc uses the Perplexify retrieval engine to chunk, embed, and cite your documents with extreme precision.</p>
+              <p className="text-slate-500 max-w-lg text-lg leading-relaxed">Lexora uses the Perplexify retrieval engine to chunk, embed, and cite your documents with extreme precision.</p>
            </div>
            
            <div className="grid gap-4">
@@ -146,7 +141,7 @@ export default async function HomePage() {
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5">
                      <img src="/logo.png" className="h-4 w-4 opacity-50" alt="" />
                   </div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.4em] text-slate-500">SmartDoc AI</span>
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.4em] text-slate-500">Lexora AI</span>
                </div>
                <p className="text-xs leading-loose text-slate-600 uppercase font-bold tracking-widest">A private, high-fidelity intelligence layer for document processing.</p>
             </div>

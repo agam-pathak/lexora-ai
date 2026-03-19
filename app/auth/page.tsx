@@ -1,19 +1,17 @@
 "use client";
 
 import {
-  ArrowRight,
   Eye,
   EyeOff,
   KeyRound,
   LockKeyhole,
   Mail,
-  ShieldCheck,
   Sparkles,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 type AuthMode = "signin" | "signup" | "forgot" | "reset";
 
@@ -40,7 +38,6 @@ function AuthPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [resetPreviewPath, setResetPreviewPath] = useState("");
 
   const token = searchParams.get("token") || "";
   const nextPath = searchParams.get("next") || "/chat";
@@ -71,7 +68,6 @@ function AuthPageContent() {
       
       if (mode === "forgot") {
         setStatusMessage(data.message);
-        setResetPreviewPath(data.resetPath);
       } else if (mode === "reset") {
         setMode("signin");
         setStatusMessage("Password reset successful. Please sign in.");
@@ -79,8 +75,8 @@ function AuthPageContent() {
         router.push(nextPath);
         router.refresh();
       }
-    } catch (e: any) {
-      setErrorMessage(e.message);
+    } catch (e: unknown) {
+      setErrorMessage(e instanceof Error ? e.message : "Auth failed.");
     } finally {
       setSubmitting(false);
     }
@@ -94,7 +90,7 @@ function AuthPageContent() {
         {/* ── Logo & Header ── */}
         <div className="text-center space-y-3">
           <Link href="/" className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400/20 to-blue-500/20 shadow-inner">
-            <img src="/logo.png" className="h-8 w-8 object-contain" alt="SmartDoc AI" />
+            <img src="/logo.png" className="h-8 w-8 object-contain" alt="Lexora AI" />
           </Link>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">{currentCopy.title}</h1>
@@ -167,7 +163,7 @@ function AuthPageContent() {
         {/* ── Footer ── */}
         <div className="text-center">
             {mode === "signin" ? (
-              <p className="text-xs text-slate-500">New to SmartDoc AI? <button onClick={() => setMode("signup")} className="font-bold text-white hover:text-cyan-400 transition-colors border-b border-white/10">Create an account</button></p>
+              <p className="text-xs text-slate-500">New to Lexora AI? <button onClick={() => setMode("signup")} className="font-bold text-white hover:text-cyan-400 transition-colors border-b border-white/10">Create an account</button></p>
             ) : mode === "signup" ? (
               <p className="text-xs text-slate-500">Already have an account? <button onClick={() => setMode("signin")} className="font-bold text-white hover:text-cyan-400 transition-colors border-b border-white/10">Sign in instead</button></p>
             ) : (

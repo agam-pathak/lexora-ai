@@ -10,7 +10,6 @@ type ChatComposerProps = {
   question: string;
   searchMode: SearchMode;
   selectedDocument: IndexedDocument | null;
-  activeConversation: ConversationSummary | null;
   canAskQuestion: boolean;
   loading: boolean;
   conversationError: string;
@@ -23,7 +22,6 @@ export default function ChatComposer({
   question,
   searchMode,
   selectedDocument,
-  activeConversation,
   canAskQuestion,
   loading,
   conversationError,
@@ -47,9 +45,9 @@ export default function ChatComposer({
           onKeyDown={onKeyDown}
           placeholder={
             searchMode === "all"
-              ? "Ask SmartDoc AI about this document..."
+              ? "Ask Lexora AI about this document..."
               : selectedDocument
-                ? `Ask SmartDoc AI about this document...`
+                ? `Ask Lexora AI about this document...`
                 : "Upload or select a document to enable chat."
           }
           disabled={!canAskQuestion || loading}

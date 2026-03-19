@@ -11,8 +11,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: {
-    default: "SmartDoc AI",
-    template: "%s | SmartDoc AI",
+    default: "Lexora AI",
+    template: "%s | Lexora AI",
   },
   description:
     "A premium document intelligence workspace for grounded PDF retrieval, indexing, and chat.",

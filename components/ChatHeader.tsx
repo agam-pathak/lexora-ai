@@ -6,16 +6,14 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import type { ChatSource, ConversationSummary, IndexedDocument } from "@/lib/types";
+import type { ConversationSummary, IndexedDocument } from "@/lib/types";
 
 type SearchMode = "document" | "all";
 
 type ChatHeaderProps = {
   documents: IndexedDocument[];
   selectedDocumentId: string;
-  selectedDocument: IndexedDocument | null;
   searchMode: SearchMode;
-  conversationSummaries: ConversationSummary[];
   activeConversation: ConversationSummary | null;
   canAskQuestion: boolean;
   promptChips: string[];
@@ -28,9 +26,7 @@ type ChatHeaderProps = {
 export default function ChatHeader({
   documents,
   selectedDocumentId,
-  selectedDocument,
   searchMode,
-  conversationSummaries,
   activeConversation,
   canAskQuestion,
   promptChips,
@@ -45,7 +41,7 @@ export default function ChatHeader({
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-white">
-            SmartDoc AI Assistant
+            Lexora AI Assistant
           </h2>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />

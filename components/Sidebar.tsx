@@ -9,7 +9,6 @@ import {
   LogOut,
   MessageSquareText,
   Orbit,
-  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
@@ -162,11 +161,11 @@ export default function Sidebar({ session }: SidebarProps) {
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center">
-                <img src="/logo.png" alt="SmartDoc AI" className="h-9 w-9 object-contain" />
+                <img src="/logo-mark.png" alt="Lexora AI" className="h-9 w-9 object-contain" />
               </div>
               <div>
                 <p className="mono text-[10px] uppercase tracking-[0.32em] text-cyan-100/65">
-                  SmartDoc AI
+                  Lexora AI
                 </p>
                 <p className="text-sm font-semibold text-white">Workspace shell</p>
               </div>
@@ -195,13 +194,13 @@ export default function Sidebar({ session }: SidebarProps) {
                 <div className="flex items-start justify-between gap-3">
                   <Link href="/" className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center">
-                      <img src="/logo.png" alt="SmartDoc AI" className="h-10 w-10 object-contain" />
+                      <img src="/logo-mark.png" alt="Lexora AI" className="h-10 w-10 object-contain" />
                     </div>
                     <div>
                       <p className="mono text-[10px] uppercase tracking-[0.32em] text-cyan-100/65">
                         Retrieval layer
                       </p>
-                      <h1 className="text-lg font-semibold text-white">SmartDoc AI</h1>
+                      <h1 className="text-lg font-semibold text-white">Lexora AI</h1>
                     </div>
                   </Link>
 

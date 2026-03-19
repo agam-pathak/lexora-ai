@@ -10,12 +10,9 @@ import {
 
 import type { ConversationSummary } from "@/lib/types";
 
-type SearchMode = "document" | "all";
-
 type ThreadHistoryProps = {
   conversationSummaries: ConversationSummary[];
   selectedConversationId: string;
-  searchMode: SearchMode;
   loadingConversations: boolean;
   deletingConversationId: string;
   conversationScopeId: string;
@@ -35,7 +32,6 @@ function formatConversationTime(value: string) {
 export default function ThreadHistory({
   conversationSummaries,
   selectedConversationId,
-  searchMode,
   loadingConversations,
   deletingConversationId,
   conversationScopeId,
