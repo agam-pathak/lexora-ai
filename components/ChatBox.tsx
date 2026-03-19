@@ -650,7 +650,7 @@ export default function ChatBox({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_22%)]">
+    <div className="flex h-full flex-col min-h-0">
       <ChatHeader
         documents={documents}
         selectedDocumentId={selectedDocumentId}
@@ -679,35 +679,32 @@ export default function ChatBox({
         onDelete={(id) => void deleteConversationById(id)}
       />
 
-      <div className="min-h-0 flex-1 px-5 py-5 sm:px-6">
-        <div className="panel-soft relative flex h-full min-h-[380px] flex-col overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(103,232,249,0.08),transparent)]" />
-
-          {loadingConversationDetail ? (
-            <div className="relative border-b border-white/8 px-4 py-3 text-sm text-slate-300 sm:px-5">
-              Loading thread...
-            </div>
-          ) : null}
-
-          <div className="relative flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
-            {displayedMessages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                role={message.role}
-                text={message.text}
-                sources={message.sources}
-                highlight={
-                  index === displayedMessages.length - 1 &&
-                  message.role === "assistant"
-                }
-                onSourceSelect={onSourceSelect}
-                onFollowUpClick={(prompt) => void sendQuestion(prompt)}
-              />
-            ))}
-
-            {loading ? <TypingIndicator /> : null}
-            <div ref={endOfMessagesRef} />
+      {/* ── Messages area ── */}
+      <div className="relative flex-1 min-h-0 overflow-y-auto px-4 py-4">
+        {loadingConversationDetail ? (
+          <div className="pb-3 text-xs text-slate-500">
+            Loading thread…
           </div>
+        ) : null}
+
+        <div className="space-y-5">
+          {displayedMessages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              role={message.role}
+              text={message.text}
+              sources={message.sources}
+              highlight={
+                index === displayedMessages.length - 1 &&
+                message.role === "assistant"
+              }
+              onSourceSelect={onSourceSelect}
+              onFollowUpClick={(prompt) => void sendQuestion(prompt)}
+            />
+          ))}
+
+          {loading ? <TypingIndicator /> : null}
+          <div ref={endOfMessagesRef} />
         </div>
       </div>
 

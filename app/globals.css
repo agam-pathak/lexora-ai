@@ -271,7 +271,11 @@ a {
   }
 
   .workspace-main {
-    @apply relative min-h-screen px-4 pb-10 pt-26 sm:px-6 lg:pl-[22rem] lg:pr-8 lg:pt-8;
+    @apply relative min-h-screen;
+  }
+
+  .pdf-page-shadow {
+    filter: drop-shadow(0 8px 32px rgba(0,0,0,0.4));
   }
 
   .workspace-orb {

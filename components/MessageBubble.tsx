@@ -4,8 +4,6 @@ import ReactMarkdown from "react-markdown";
 
 import type { ChatSource } from "@/lib/types";
 
-
-
 type MessageBubbleProps = {
   role: "user" | "assistant";
   text: string;
@@ -33,7 +31,7 @@ export default function MessageBubble({
   // Extract followups
   let mainText = text;
   let followups: string[] = [];
-  
+
   const [isPlaying, setIsPlaying] = useState(false);
 
   const toggleAudio = () => {
@@ -43,11 +41,10 @@ export default function MessageBubble({
       return;
     }
 
-    // Clean text by stripping inline reference brackets like [1] before speaking
     const textToSpeak = mainText.replace(/\[\d+\]/g, "");
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.onend = () => setIsPlaying(false);
-    utterance.rate = 1.05; // Slightly faster, natural pacing
+    utterance.rate = 1.05;
     setIsPlaying(true);
     window.speechSynthesis.speak(utterance);
   };
@@ -60,25 +57,34 @@ export default function MessageBubble({
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.includes("<followups>"));
   } else {
-    // Hide incomplete streaming tags
     const partialMatch = text.match(/<followups>([^<]*)$/);
     if (partialMatch) {
       mainText = text.substring(0, partialMatch.index).trim();
     }
   }
 
-  // Parse inline citations like [1] out of mainText to wrap them
   const markdownText = mainText.replace(/(\[\d+\])/g, " $1 ");
 
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-md rounded-2xl rounded-br-md bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/10 px-4 py-3 text-sm text-slate-100">
+          <div className="whitespace-pre-wrap">{mainText}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex flex-col ${isUser ? "items-end" : "items-start w-full"}`}>
-      {!isUser && sources.length > 0 ? (
-        <div className="mb-4 mt-2 w-full max-w-4xl">
-          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <Search className="h-4 w-4" />
-            Sources
+    <div className="space-y-3">
+      {/* ── Source cards ── */}
+      {sources.length > 0 ? (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <Search className="h-3 w-3" />
+            Sources &amp; Citations:
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
             {sources.map((source, index) => (
               <button
                 key={`${source.documentId}-${source.chunkIndex}-${index}`}
@@ -86,22 +92,22 @@ export default function MessageBubble({
                 onClick={() => onSourceSelect?.(source)}
                 onMouseEnter={() => setHoveredSourceIndex(index)}
                 onMouseLeave={() => setHoveredSourceIndex(null)}
-                className={`flex w-[160px] shrink-0 flex-col gap-1.5 rounded-[20px] border p-3 text-left transition-all ${
+                className={`flex shrink-0 items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
                   hoveredSourceIndex === index
-                    ? "border-cyan-300/50 bg-cyan-300/10 shadow-[0_0_15px_rgba(103,232,249,0.15)]"
-                    : "border-white/10 bg-slate-950/40 hover:border-cyan-300/30 hover:bg-slate-900/60"
+                    ? "border-cyan-400/30 bg-cyan-400/[0.08]"
+                    : "border-white/[0.06] bg-white/[0.02] hover:border-white/10"
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-slate-300 ring-1 ring-white/10">
-                    {index + 1}
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-cyan-400/20 text-[9px] font-bold text-cyan-300">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 max-w-[180px]">
+                  <span className="block truncate text-[11px] font-medium text-slate-300">
+                    {formatPageRange(source.pageStart, source.pageEnd)}
                   </span>
-                  <span className="truncate font-medium text-slate-300" title={source.source}>
-                    {source.source}
+                  <span className="line-clamp-2 text-[10px] leading-snug text-slate-500">
+                    {source.excerpt}
                   </span>
-                </div>
-                <div className="line-clamp-2 text-[11px] leading-snug text-slate-400">
-                  {source.excerpt}
                 </div>
               </button>
             ))}
@@ -109,121 +115,118 @@ export default function MessageBubble({
         </div>
       ) : null}
 
-      <div
-        className={`max-w-3xl rounded-[28px] px-5 py-5 transition sm:px-6 shadow-md ${
-          isUser
-            ? "bg-gradient-to-br from-cyan-300 via-sky-400 to-sky-500 text-slate-950"
-            : highlight
-              ? "border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(34,57,83,0.76),rgba(14,27,45,0.9))] text-slate-100"
-              : "border border-white/10 bg-white/[0.06] text-slate-100 backdrop-blur-xl"
-        }`}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-60">
-            {isUser ? <UserRound className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-            <span>{isUser ? "You" : "Answer"}</span>
-          </div>
-          
-          {!isUser && highlight && (
-            <button 
-              onClick={toggleAudio}
-              className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition border ${
-                isPlaying 
-                  ? "bg-cyan-300/20 text-cyan-200 border-cyan-300/30 animate-pulse" 
-                  : "bg-white/5 border-white/10 text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {isPlaying ? "Pause" : "Listen"}
-            </button>
-          )}
-        </div>
+      {/* ── Main answer ── */}
+      <div className="text-sm leading-relaxed text-slate-200">
+        <ReactMarkdown
+          components={{
+            p: ({ children }: any) => <p className="mb-3 last:mb-0">{children}</p>,
+            ul: ({ children }: any) => <ul className="mb-3 ml-4 list-disc space-y-1 text-slate-300">{children}</ul>,
+            ol: ({ children }: any) => <ol className="mb-3 ml-4 list-decimal space-y-1 text-slate-300">{children}</ol>,
+            li: ({ children }: any) => <li>{children}</li>,
+            h1: ({ children }: any) => <h1 className="mb-2 mt-4 text-base font-bold text-white">{children}</h1>,
+            h2: ({ children }: any) => <h2 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h2>,
+            h3: ({ children }: any) => <h3 className="mb-2 mt-3 text-sm font-bold text-white">{children}</h3>,
+            strong: ({ children }: any) => <strong className="font-semibold text-white">{children}</strong>,
+            code: ({ children }: any) => <code className="rounded bg-slate-800/60 px-1.5 py-0.5 text-xs font-medium text-cyan-200">{children}</code>,
+            text: ({ node }: any) => {
+              const val = node.value;
+              const parts = val.split(/(\[\d+\])/g);
+              if (parts.length === 1) return val;
 
-        {!isUser && sources.length > 0 && (
-          <details className="mb-4">
-            <summary className="cursor-pointer text-xs font-medium text-slate-400 hover:text-cyan-300 transition-colors flex items-center gap-2 list-none marker:hidden">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-zap text-cyan-400"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              <span>View agentic thinking steps</span>
-            </summary>
-            <div className="mt-2 pl-6 border-l-2 border-white/10 text-xs text-slate-500 space-y-2">
-              <div className="flex items-center gap-2"><span className="block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-pulse"></span> Parsed user query intent.</div>
-              <div className="flex items-center gap-2"><span className="block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-pulse delay-75"></span> Retrieved {sources.length} relevant chunks from the vector index.</div>
-              <div className="flex items-center gap-2"><span className="block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-pulse delay-150"></span> Cross-referencing evidence and synthesizing response.</div>
-            </div>
-          </details>
-        )}
-
-        <div className="text-[15px] leading-relaxed">
-          {isUser ? (
-            <div className="whitespace-pre-wrap">{mainText}</div>
-          ) : (
-            <ReactMarkdown
-              components={{
-                p: ({ children }: any) => <p className="mb-4 last:mb-0">{children}</p>,
-                ul: ({ children }: any) => <ul className="mb-4 ml-5 list-disc space-y-1 text-slate-300">{children}</ul>,
-                ol: ({ children }: any) => <ol className="mb-4 ml-5 list-decimal space-y-1 text-slate-300">{children}</ol>,
-                li: ({ children }: any) => <li>{children}</li>,
-                h1: ({ children }: any) => <h1 className="mb-3 mt-5 text-xl font-bold text-white">{children}</h1>,
-                h2: ({ children }: any) => <h2 className="mb-3 mt-4 text-lg font-bold text-white">{children}</h2>,
-                h3: ({ children }: any) => <h3 className="mb-2 mt-3 font-bold text-white">{children}</h3>,
-                strong: ({ children }: any) => <strong className="font-semibold text-white">{children}</strong>,
-                code: ({ children }: any) => <code className="rounded bg-slate-950/50 px-1.5 py-0.5 text-sm font-medium text-cyan-200">{children}</code>,
-                // Override rendering of text patterns matched as `[1]` to render citations
-                text: ({ node }: any) => {
-                  const val = node.value;
-                  const parts = val.split(/(\[\d+\])/g);
-                  if (parts.length === 1) return val;
-                  
-                  return (
-                    <>
-                      {parts.map((part: string, index: number) => {
-                        const match = part.match(/\[(\d+)\]/);
-                        if (match) {
-                          const sourceIndex = parseInt(match[1], 10) - 1;
-                          if (sourceIndex >= 0 && sourceIndex < sources.length) {
-                            return (
-                              <button
-                                key={index}
-                                className={`inline-flex items-center justify-center translate-y-[-2px] mx-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none transition-colors ${
-                                  hoveredSourceIndex === sourceIndex
-                                    ? "bg-cyan-300 text-slate-900"
-                                    : "bg-cyan-300/20 text-cyan-200 hover:bg-cyan-300/40"
-                                }`}
-                                onMouseEnter={() => setHoveredSourceIndex(sourceIndex)}
-                                onMouseLeave={() => setHoveredSourceIndex(null)}
-                                onClick={() => onSourceSelect?.(sources[sourceIndex])}
-                                title={sources[sourceIndex].source}
-                              >
-                                {sourceIndex + 1}
-                              </button>
-                            );
-                          }
-                        }
-                        return <span key={index}>{part}</span>;
-                      })}
-                    </>
-                  );
-                }
-              }}
-            >
-              {markdownText}
-            </ReactMarkdown>
-          )}
-        </div>
+              return (
+                <>
+                  {parts.map((part: string, index: number) => {
+                    const match = part.match(/\[(\d+)\]/);
+                    if (match) {
+                      const sourceIndex = parseInt(match[1], 10) - 1;
+                      if (sourceIndex >= 0 && sourceIndex < sources.length) {
+                        return (
+                          <button
+                            key={index}
+                            className={`inline-flex translate-y-[-1px] items-center justify-center mx-0.5 rounded px-1 py-0 text-[10px] font-bold leading-none transition ${
+                              hoveredSourceIndex === sourceIndex
+                                ? "bg-cyan-400 text-slate-900"
+                                : "bg-cyan-400/20 text-cyan-300 hover:bg-cyan-400/40"
+                            }`}
+                            onMouseEnter={() => setHoveredSourceIndex(sourceIndex)}
+                            onMouseLeave={() => setHoveredSourceIndex(null)}
+                            onClick={() => onSourceSelect?.(sources[sourceIndex])}
+                            title={sources[sourceIndex].source}
+                          >
+                            {sourceIndex + 1}
+                          </button>
+                        );
+                      }
+                    }
+                    return <span key={index}>{part}</span>;
+                  })}
+                </>
+              );
+            },
+          }}
+        >
+          {markdownText}
+        </ReactMarkdown>
       </div>
 
-      {!isUser && followups.length > 0 && highlight ? (
-        <div className="mt-6 flex flex-col gap-3 pl-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <ArrowUpRight className="h-4 w-4 text-cyan-200" />
+      {/* ── Agentic Thinking Process ── */}
+      {sources.length > 0 && highlight && (
+        <details className="rounded-lg border border-white/[0.06] bg-white/[0.02]">
+          <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[11px] font-medium text-slate-400 transition hover:text-cyan-300 [&>svg]:transition-transform [&[open]>svg]:rotate-90 list-none">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Agentic Thinking Process (Expanded)
+          </summary>
+          <div className="space-y-2 border-t border-white/[0.04] px-3 py-3">
+            <div className="flex items-start gap-2 text-[11px] text-slate-400">
+              <span className="mt-0.5 font-mono text-cyan-400/80">1.</span>
+              Identified core question (intent classification)
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-slate-400">
+              <span className="mt-0.5 font-mono text-cyan-400/80">2.</span>
+              Analyzed relevant sections from the document index
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-slate-400">
+              <span className="mt-0.5 font-mono text-cyan-400/80">3.</span>
+              Synthesized obligations for the query across {sources.length} chunks
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-slate-400">
+              <span className="mt-0.5 font-mono text-cyan-400/80">4.</span>
+              Formulated response with explicit source citations
+            </div>
+          </div>
+        </details>
+      )}
+
+      {/* ── Listen button ── */}
+      {highlight && (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={toggleAudio}
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition border ${
+              isPlaying
+                ? "bg-cyan-400/10 text-cyan-300 border-cyan-400/20"
+                : "bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-white"
+            }`}
+          >
+            {isPlaying ? "⏸ Pause" : "🔊 Listen"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Follow-up suggestions ── */}
+      {followups.length > 0 && highlight ? (
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <ArrowUpRight className="h-3 w-3 text-cyan-400/60" />
             Related
           </div>
-          <div className="flex flex-col items-start gap-2">
+          <div className="flex flex-col items-start gap-1.5">
             {followups.map((question, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => onFollowUpClick?.(question)}
-                className="rounded-full border border-white/10 bg-slate-950/60 px-4 py-2.5 text-sm text-cyan-50 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 text-left"
+                className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px] text-slate-300 transition hover:border-cyan-400/20 hover:bg-cyan-400/5 hover:text-cyan-200 text-left"
               >
                 {question}
               </button>

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ExternalLink,
   FileSearch,
+  Layers,
   Minus,
   Plus,
 } from "lucide-react";
@@ -34,10 +35,6 @@ function toProtectedUrl(fileUrl: string): string {
   return `/api/files/serve?path=${encodeURIComponent(fileUrl)}`;
 }
 
-function formatPageRange(pageStart: number, pageEnd: number) {
-  return pageStart === pageEnd ? `p.${pageStart}` : `pp.${pageStart}-${pageEnd}`;
-}
-
 export default function PDFViewer({
   fileUrl,
   title,
@@ -58,7 +55,7 @@ export default function PDFViewer({
     }
 
     const updateWidth = () => {
-      setPageWidth(Math.max(280, Math.floor(node.clientWidth - 48)));
+      setPageWidth(Math.max(280, Math.floor(node.clientWidth - 32)));
     };
 
     updateWidth();
@@ -75,99 +72,113 @@ export default function PDFViewer({
     pageCount > 0 ? Math.min(Math.max(pageNumber, 1), pageCount) : pageNumber;
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <p className="mono text-[11px] uppercase tracking-[0.28em] text-cyan-100/70">
-            Document viewer
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold text-white">{title}</h2>
+    <div className="flex h-full flex-col">
+      {/* ── Header bar ── */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
           {focusedSource ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/18 bg-cyan-300/10 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-cyan-100">
-              Focused source {formatPageRange(
-                focusedSource.pageStart,
-                focusedSource.pageEnd,
-              )}
-            </div>
+            <span className="mt-1 text-[11px] text-cyan-300">
+              Focused: p.{focusedSource.pageStart}
+              {focusedSource.pageEnd !== focusedSource.pageStart
+                ? `–${focusedSource.pageEnd}`
+                : ""}
+            </span>
           ) : null}
         </div>
 
         {fileUrl && pageCount > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-2 py-2 text-sm text-slate-200">
+          <div className="flex items-center gap-1">
+            {/* Page nav */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-1.5 py-1 text-xs">
               <button
                 type="button"
                 onClick={() => onPageChange(Math.max(1, safePageNumber - 1))}
                 disabled={safePageNumber <= 1}
-                className="rounded-full p-2 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded p-1 transition hover:bg-white/10 disabled:opacity-30"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-3.5 w-3.5 text-slate-300" />
               </button>
-
-              <span className="mono px-2 text-xs text-slate-300">
-                Page {safePageNumber} / {pageCount}
+              <span className="px-1.5 font-mono text-[11px] text-slate-300">
+                Pg {safePageNumber} of {pageCount}
               </span>
-
               <button
                 type="button"
-                onClick={() => onPageChange(Math.min(pageCount, safePageNumber + 1))}
+                onClick={() =>
+                  onPageChange(Math.min(pageCount, safePageNumber + 1))
+                }
                 disabled={safePageNumber >= pageCount}
-                className="rounded-full p-2 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded p-1 transition hover:bg-white/10 disabled:opacity-30"
               >
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
               </button>
             </div>
 
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-2 py-2 text-sm text-slate-200">
+            {/* Zoom */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-1.5 py-1">
               <button
                 type="button"
-                onClick={() => setZoom((currentZoom) => Math.max(0.8, currentZoom - 0.1))}
-                className="rounded-full p-2 transition hover:bg-white/10"
+                onClick={() =>
+                  setZoom((z) => Math.max(0.6, +(z - 0.1).toFixed(1)))
+                }
+                className="rounded p-1 transition hover:bg-white/10"
               >
-                <Minus className="h-4 w-4" />
+                <Minus className="h-3.5 w-3.5 text-slate-300" />
               </button>
-              <span className="mono px-1 text-xs text-slate-300">
+              <span className="px-1 font-mono text-[11px] text-slate-300">
                 {Math.round(zoom * 100)}%
               </span>
               <button
                 type="button"
-                onClick={() => setZoom((currentZoom) => Math.min(1.8, currentZoom + 0.1))}
-                className="rounded-full p-2 transition hover:bg-white/10"
+                onClick={() =>
+                  setZoom((z) => Math.min(2, +(z + 0.1).toFixed(1)))
+                }
+                className="rounded p-1 transition hover:bg-white/10"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5 text-slate-300" />
               </button>
             </div>
 
+            {/* Thumbnails pill */}
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
+            >
+              <Layers className="h-3.5 w-3.5" /> Thumbnails
+            </button>
+
+            {/* Open externally */}
             <Link
               href={toProtectedUrl(fileUrl)}
               target="_blank"
-              className="premium-button-secondary px-4 py-2.5"
+              className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
             >
-              <ExternalLink className="h-4 w-4" />
-              Open
+              <ExternalLink className="h-3.5 w-3.5" /> Open
             </Link>
           </div>
         ) : null}
       </div>
 
+      {/* ── Document render area ── */}
       <div
         ref={frameRef}
-        className="panel-soft flex min-h-[680px] flex-1 items-center justify-center overflow-auto p-5"
+        className="flex flex-1 items-start justify-center overflow-auto bg-[rgba(4,6,14,0.5)] p-4"
       >
         {fileUrl ? (
           <Document
             file={toProtectedUrl(fileUrl)}
             loading={
-              <p className="text-sm text-slate-300">Loading document preview…</p>
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <LoaderDots /> Loading document…
+              </div>
             }
             error={
-              <p className="text-sm text-rose-200">
+              <p className="text-sm text-rose-300">
                 The PDF preview could not be rendered.
               </p>
             }
             onLoadSuccess={({ numPages }) => {
               setPageCount(numPages);
-
               if (safePageNumber > numPages) {
                 onPageChange(numPages);
               }
@@ -179,22 +190,33 @@ export default function PDFViewer({
               scale={zoom}
               renderAnnotationLayer
               renderTextLayer
+              className="pdf-page-shadow"
             />
           </Document>
         ) : (
-          <div className="flex max-w-sm flex-col items-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-300/10 text-cyan-100">
-              <FileSearch className="h-8 w-8" />
+          <div className="flex max-w-xs flex-col items-center pt-20 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-300">
+              <FileSearch className="h-7 w-7" />
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-white">
+            <h3 className="mb-2 text-base font-semibold text-white">
               No document selected
             </h3>
-            <p className="text-sm leading-6 text-slate-300">
+            <p className="text-sm leading-6 text-slate-400">
               Pick an indexed PDF to keep the source visible while you chat.
             </p>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function LoaderDots() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400 delay-75" />
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400 delay-150" />
+    </span>
   );
 }

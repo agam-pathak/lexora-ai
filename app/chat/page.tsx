@@ -3,11 +3,7 @@
 import dynamic from "next/dynamic";
 import {
   ArrowRight,
-  Eye,
-  FileStack,
   MessageSquareText,
-  ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -112,16 +108,15 @@ function ChatWorkspace() {
 
   if (!loadingDocuments && documents.length === 0) {
     return (
-      <div className="panel flex min-h-[760px] items-center justify-center p-8 text-center">
-        <div className="max-w-xl">
-          <span className="eyebrow">
-            <MessageSquareText className="h-3.5 w-3.5" />
-            Workspace
-          </span>
-          <h1 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
-            No indexed PDFs available yet
+      <div className="flex h-full items-center justify-center p-8 text-center">
+        <div className="max-w-md">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-400/10">
+            <MessageSquareText className="h-8 w-8 text-cyan-300" />
+          </div>
+          <h1 className="text-2xl font-semibold text-white">
+            No indexed PDFs yet
           </h1>
-          <p className="mt-4 text-sm leading-7 text-slate-300 sm:text-base">
+          <p className="mt-3 text-sm leading-7 text-slate-400">
             Upload a document first, then come back to run grounded questions
             against retrieved evidence.
           </p>
@@ -137,10 +132,13 @@ function ChatWorkspace() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.07fr_0.93fr] h-[calc(100vh-theme(spacing.32))] min-h-0">
-      <section className="panel p-5 sm:p-6 flex flex-col overflow-hidden">
+    <div className="grid h-full grid-cols-1 gap-0 xl:grid-cols-2">
+      {/* ── Left: PDF Viewer ── */}
+      <section className="flex flex-col overflow-hidden border-r border-white/[0.06]">
         {errorMessage ? (
-          <p className="mb-4 text-sm text-rose-300">{errorMessage}</p>
+          <p className="border-b border-rose-400/20 bg-rose-400/5 px-4 py-2 text-xs text-rose-300">
+            {errorMessage}
+          </p>
         ) : null}
 
         <PDFViewer
@@ -153,7 +151,8 @@ function ChatWorkspace() {
         />
       </section>
 
-      <section className="panel overflow-hidden flex flex-col">
+      {/* ── Right: Chat ── */}
+      <section className="flex flex-col overflow-hidden">
         <ChatBox
           documents={documents}
           selectedDocumentId={selectedDocumentId}
@@ -180,12 +179,10 @@ export default function ChatPage() {
   return (
     <Suspense
       fallback={
-        <div className="panel flex min-h-[760px] items-center justify-center p-8 text-center">
-          <div>
-            <span className="eyebrow">Workspace</span>
-            <h1 className="mt-5 text-3xl font-semibold text-white">
-              Loading workspace
-            </h1>
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+            <p className="text-sm text-slate-400">Loading workspace…</p>
           </div>
         </div>
       }
