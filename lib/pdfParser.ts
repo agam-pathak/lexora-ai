@@ -1,3 +1,11 @@
+if (
+  typeof global !== "undefined" &&
+  typeof (global as { DOMMatrix?: unknown }).DOMMatrix === "undefined"
+) {
+  (global as { DOMMatrix?: new (...args: unknown[]) => unknown }).DOMMatrix =
+    class DOMMatrixStub {};
+}
+
 import { PDFParse } from "pdf-parse";
 import { createRequire } from "node:module";
 
@@ -24,7 +32,7 @@ const MIN_PAGE_CHARACTERS_FOR_NATIVE_TEXT = 70;
 const MIN_AVERAGE_DOCUMENT_CHARACTERS = 80;
 
 let didConfigurePdfWorker = false;
-let didConfigurePdfDomPolyfills = false;
+let didConfigureOcrDomPolyfills = false;
 const require = createRequire(import.meta.url);
 const CANVAS_MODULE_NAME = ["@napi-rs", "canvas"].join("/");
 
@@ -89,8 +97,8 @@ function configurePdfWorker() {
   didConfigurePdfWorker = true;
 }
 
-function configurePdfDomPolyfills() {
-  if (didConfigurePdfDomPolyfills || typeof global === "undefined") {
+function configureOcrDomPolyfills() {
+  if (didConfigureOcrDomPolyfills || typeof global === "undefined") {
     return;
   }
 
@@ -112,7 +120,7 @@ function configurePdfDomPolyfills() {
     (global as { Path2D?: typeof Path2D }).Path2D = Path2D;
   }
 
-  didConfigurePdfDomPolyfills = true;
+  didConfigureOcrDomPolyfills = true;
 }
 
 function pickBestPageText(nativeText: string, ocrText: string) {
@@ -140,7 +148,6 @@ function pickBestPageText(nativeText: string, ocrText: string) {
 
 export async function parsePdfFile(filePath: string): Promise<ParsedPdfDocument> {
   configurePdfWorker();
-  configurePdfDomPolyfills();
 
   const buffer = await readFile(filePath);
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
@@ -176,6 +183,8 @@ export async function parsePdfFile(filePath: string): Promise<ParsedPdfDocument>
 
     if (pageNumbersNeedingOcr.length > 0) {
       try {
+        configureOcrDomPolyfills();
+
         const ocrPages = await extractPdfPagesWithOcr(
           new Uint8Array(buffer),
           pageNumbersNeedingOcr,
