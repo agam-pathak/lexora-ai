@@ -1,3 +1,8 @@
+// Polyfill DOMMatrix for PDF.js compatibility on Vercel Serverless
+if (typeof global !== "undefined" && typeof (global.DOMMatrix as any) === "undefined") {
+  (global as any).DOMMatrix = class {};
+}
+
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";

@@ -13,7 +13,7 @@ import path from "node:path";
 import { chunkText } from "@/lib/chunkText";
 import { embedTexts } from "@/lib/embeddings";
 import { withFileLock } from "@/lib/file-lock";
-import { parsePdfFile } from "@/lib/pdfParser";
+
 import {
   ensurePrivateUploadAvailable,
   ensureUserWorkspaceDirectories,
@@ -377,7 +377,9 @@ export async function indexDocument(input: IndexDocumentInput) {
     throw new Error("Uploaded PDF file could not be found for indexing.");
   }
 
+  const { parsePdfFile } = await import("@/lib/pdfParser");
   const parsedPdf = await parsePdfFile(filePath);
+
   const chunks = chunkText(parsedPdf.pages, {
     chunkSize: DEFAULT_CHUNK_SIZE,
     overlap: DEFAULT_CHUNK_OVERLAP,
