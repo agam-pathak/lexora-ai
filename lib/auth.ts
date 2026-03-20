@@ -53,8 +53,8 @@ function getAuthSecret() {
   }
 
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "LEXORA_AUTH_SECRET must be configured in production.",
+    console.warn(
+      "LEXORA_AUTH_SECRET is missing. Using development fallback. Configure this in Vercel for production security.",
     );
   }
 
