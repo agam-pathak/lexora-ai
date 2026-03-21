@@ -15,7 +15,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+const MAX_VERCEL_PROXY_UPLOAD_BYTES =
+  process.env.VERCEL === "1" ? 4 * 1024 * 1024 : MAX_FILE_SIZE_BYTES;
 
 function sanitizePdfFilename(originalName: string) {
   const baseName = path.basename(originalName, path.extname(originalName));
@@ -35,6 +37,21 @@ function getDisplayName(originalName: string) {
   return path.basename(originalName, path.extname(originalName)).trim() || "Untitled document";
 }
 
+function createIndexedDocumentResponse(document: Awaited<ReturnType<typeof indexDocument>>) {
+  const extractionLimited =
+    document.chunkCount === 0 && document.extractionMode === "ocr-recommended";
+
+  return {
+    message: extractionLimited
+      ? "Document uploaded, but searchable text did not index completely in this deployment. Reindex after OCR is available to generate grounded answers."
+      : "Document uploaded and indexed successfully.",
+    document,
+    warning: extractionLimited
+      ? "No searchable text was indexed for this PDF."
+      : undefined,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -43,6 +60,57 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Authentication is required." },
         { status: 401 },
+      );
+    }
+
+    const contentType = request.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const body = await request.json();
+      const parsedPdf = coerceParsedPdfDocument(body.parsedPdf);
+      const fileName =
+        typeof body.fileName === "string" ? body.fileName.trim() : "";
+      const sizeBytes =
+        typeof body.sizeBytes === "number" ? body.sizeBytes : Number.NaN;
+      const name =
+        typeof body.name === "string" && body.name.trim()
+          ? body.name.trim()
+          : getDisplayName(fileName);
+
+      if (!fileName || !fileName.toLowerCase().endsWith(".pdf")) {
+        return NextResponse.json(
+          { error: "Only PDF uploads are allowed." },
+          { status: 400 },
+        );
+      }
+
+      if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+        return NextResponse.json(
+          { error: "A valid PDF size is required." },
+          { status: 400 },
+        );
+      }
+
+      if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: "The PDF exceeds the 25 MB upload limit." },
+          { status: 413 },
+        );
+      }
+
+      const document = await indexDocument({
+        userId: session.userId,
+        documentId: randomUUID(),
+        name,
+        fileName,
+        fileUrl: resolveUserUploadUrl(session.userId, fileName),
+        sizeBytes,
+        parsedPdf,
+      });
+
+      return NextResponse.json(
+        createIndexedDocumentResponse(document),
+        { status: 201 },
       );
     }
 
@@ -71,7 +139,17 @@ export async function POST(request: Request) {
     if (uploadedFile.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json(
         {
-          error: "The PDF exceeds the 15 MB upload limit.",
+          error: "The PDF exceeds the 25 MB upload limit.",
+        },
+        { status: 413 },
+      );
+    }
+
+    if (uploadedFile.size > MAX_VERCEL_PROXY_UPLOAD_BYTES) {
+      return NextResponse.json(
+        {
+          error:
+            "This deployment cannot proxy PDFs larger than 4 MB through a Vercel function. Use direct storage upload for larger files.",
         },
         { status: 413 },
       );
@@ -97,19 +175,9 @@ export async function POST(request: Request) {
       sizeBytes: buffer.byteLength,
       parsedPdf,
     });
-    const extractionLimited =
-      document.chunkCount === 0 && document.extractionMode === "ocr-recommended";
 
     return NextResponse.json(
-      {
-        message: extractionLimited
-          ? "Document uploaded, but OCR text extraction did not complete in this deployment. Reindex after OCR is available to generate grounded answers."
-          : "Document uploaded and indexed successfully.",
-        document,
-        warning: extractionLimited
-          ? "No searchable text was indexed for this PDF."
-          : undefined,
-      },
+      createIndexedDocumentResponse(document),
       { status: 201 },
     );
   } catch (error) {

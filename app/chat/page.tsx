@@ -19,11 +19,23 @@ import {
 
 import ChatBox from "@/components/ChatBox";
 import { extractPdfDocumentFromUrl } from "@/lib/clientPdfExtraction";
-import type { ChatSource, IndexedDocument } from "@/lib/types";
+import type {
+  ChatSource,
+  IndexedDocument,
+  ParsedPdfDocument,
+} from "@/lib/types";
 
 const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
 });
+const MAX_INLINE_PARSED_PDF_BYTES = 1.5 * 1024 * 1024;
+
+function getInlineParsedPdf(parsedPdf: ParsedPdfDocument) {
+  return new Blob([JSON.stringify(parsedPdf)]).size <=
+    MAX_INLINE_PARSED_PDF_BYTES
+    ? parsedPdf
+    : null;
+}
 
 function ChatWorkspace() {
   const searchParams = useSearchParams();
@@ -138,6 +150,7 @@ function ChatWorkspace() {
         if (parsedPdf.pages.length === 0) {
           return;
         }
+        const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
 
         const response = await fetch("/api/index", {
           method: "POST",
@@ -146,7 +159,7 @@ function ChatWorkspace() {
           },
           body: JSON.stringify({
             documentId: targetDocument.id,
-            parsedPdf,
+            parsedPdf: inlineParsedPdf,
           }),
         });
         const data = await response.json();

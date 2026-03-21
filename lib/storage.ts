@@ -24,6 +24,10 @@ const SUPABASE_UPLOADS_BUCKET =
   process.env.SUPABASE_STORAGE_BUCKET?.trim() ||
   "";
 
+export function getSupabaseUploadsBucketName() {
+  return SUPABASE_UPLOADS_BUCKET;
+}
+
 export function resolveUserWorkspaceRoot(userId: string) {
   return path.join(USER_WORKSPACES_ROOT, userId);
 }

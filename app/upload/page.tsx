@@ -24,9 +24,10 @@ import {
   extractPdfDocumentFromFile,
   extractPdfDocumentFromUrl,
 } from "@/lib/clientPdfExtraction";
-import type { IndexedDocument } from "@/lib/types";
+import type { IndexedDocument, ParsedPdfDocument } from "@/lib/types";
 
-const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_INLINE_PARSED_PDF_BYTES = 1.5 * 1024 * 1024;
 type UploadStage =
   | "idle"
   | "analyzing"
@@ -34,6 +35,60 @@ type UploadStage =
   | "indexing"
   | "ready"
   | "error";
+
+function getInlineParsedPdf(
+  parsedPdf: ParsedPdfDocument | null,
+) {
+  if (!parsedPdf) {
+    return null;
+  }
+
+  const serialized = JSON.stringify(parsedPdf);
+
+  if (new Blob([serialized]).size > MAX_INLINE_PARSED_PDF_BYTES) {
+    return null;
+  }
+
+  return parsedPdf;
+}
+
+function uploadFileToSignedUrl(
+  signedUrl: string,
+  file: File,
+  onProgress: (progress: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+
+    request.open("PUT", signedUrl);
+    request.setRequestHeader("x-upsert", "true");
+    request.setRequestHeader("cache-control", "max-age=3600");
+    request.setRequestHeader("content-type", file.type || "application/pdf");
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) {
+        return;
+      }
+
+      onProgress(Math.min(78, 20 + Math.round((event.loaded / event.total) * 58)));
+    };
+
+    request.onerror = () => {
+      reject(new Error("Direct upload to storage failed."));
+    };
+
+    request.onload = () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(new Error("Direct upload to storage failed."));
+        return;
+      }
+
+      resolve();
+    };
+
+    request.send(file);
+  });
+}
 
 function formatBytes(sizeBytes: number) {
   if (sizeBytes < 1024 * 1024) {
@@ -89,7 +144,7 @@ export default function UploadPage() {
     setErrorMessage("");
     if (!file) { setSelectedFile(null); return; }
     if (file.type !== "application/pdf") { setSelectedFile(null); setErrorMessage("Only PDF files are allowed."); return; }
-    if (file.size > MAX_UPLOAD_BYTES) { setSelectedFile(null); setErrorMessage("The PDF exceeds the 15 MB upload limit."); return; }
+    if (file.size > MAX_UPLOAD_BYTES) { setSelectedFile(null); setErrorMessage("The PDF exceeds the 25 MB upload limit."); return; }
     setSelectedFile(file);
   }
 
@@ -112,66 +167,117 @@ export default function UploadPage() {
         console.warn("Local PDF extraction failed before upload.", error);
       }
 
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      if (parsedPdf) {
-        formData.append("parsedPdf", JSON.stringify(parsedPdf));
-      }
+      const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
+      let indexingInterval: number | null = null;
+      let data: { message?: string; document: IndexedDocument };
 
-      const data = await new Promise<{ message?: string; document: IndexedDocument }>((resolve, reject) => {
-        const request = new XMLHttpRequest();
-        let indexingInterval: number | null = null;
+      try {
+        const sessionResponse = await fetch("/api/upload/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: selectedFile.name,
+            contentType: selectedFile.type || "application/pdf",
+            sizeBytes: selectedFile.size,
+          }),
+        });
+        const sessionData = await sessionResponse.json();
 
-        request.open("POST", "/api/upload");
+        if (!sessionResponse.ok) {
+          throw new Error(sessionData.error || "Unable to create a direct upload session.");
+        }
 
-        request.upload.onprogress = (event) => {
-          if (!event.lengthComputable) {
-            return;
-          }
+        setUploadStage("uploading");
+        await uploadFileToSignedUrl(
+          sessionData.signedUrl,
+          selectedFile,
+          setUploadProgress,
+        );
 
-          const nextProgress = Math.min(
-            78,
-            20 + Math.round((event.loaded / event.total) * 58),
-          );
-          setUploadProgress(nextProgress);
-        };
+        setUploadStage("indexing");
+        setUploadProgress(82);
+        indexingInterval = window.setInterval(() => {
+          setUploadProgress((current) => (current >= 96 ? current : current + 2));
+        }, 260);
 
-        request.upload.onload = () => {
-          setUploadStage("indexing");
-          setUploadProgress(82);
-          indexingInterval = window.setInterval(() => {
-            setUploadProgress((current) => (current >= 96 ? current : current + 2));
-          }, 260);
-        };
+        const finalizeResponse = await fetch("/api/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fileName: sessionData.fileName,
+            name: selectedFile.name.replace(/\.pdf$/i, ""),
+            sizeBytes: selectedFile.size,
+            parsedPdf: inlineParsedPdf,
+          }),
+        });
+        const finalizeData = await finalizeResponse.json();
 
-        request.onerror = () => {
-          if (indexingInterval) {
-            window.clearInterval(indexingInterval);
-          }
-          reject(new Error("Upload failed unexpectedly."));
-        };
+        if (!finalizeResponse.ok) {
+          throw new Error(finalizeData.error || "Upload failed.");
+        }
 
-        request.onload = () => {
-          if (indexingInterval) {
-            window.clearInterval(indexingInterval);
-          }
+        data = finalizeData;
+      } catch (directUploadError) {
+        console.warn("Direct storage upload failed, falling back to function upload.", directUploadError);
 
-          try {
-            const payload = JSON.parse(request.responseText || "{}");
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        if (inlineParsedPdf) {
+          formData.append("parsedPdf", JSON.stringify(inlineParsedPdf));
+        }
 
-            if (request.status < 200 || request.status >= 300) {
-              reject(new Error(payload.error || "Upload failed."));
+        data = await new Promise<{ message?: string; document: IndexedDocument }>((resolve, reject) => {
+          const request = new XMLHttpRequest();
+
+          request.open("POST", "/api/upload");
+
+          request.upload.onprogress = (event) => {
+            if (!event.lengthComputable) {
               return;
             }
 
-            resolve(payload);
-          } catch {
-            reject(new Error("Upload failed unexpectedly."));
-          }
-        };
+            setUploadStage("uploading");
+            setUploadProgress(Math.min(78, 20 + Math.round((event.loaded / event.total) * 58)));
+          };
 
-        request.send(formData);
-      });
+          request.upload.onload = () => {
+            setUploadStage("indexing");
+            setUploadProgress(82);
+            indexingInterval = window.setInterval(() => {
+              setUploadProgress((current) => (current >= 96 ? current : current + 2));
+            }, 260);
+          };
+
+          request.onerror = () => {
+            reject(new Error("Upload failed unexpectedly."));
+          };
+
+          request.onload = () => {
+            try {
+              const payload = JSON.parse(request.responseText || "{}");
+
+              if (request.status < 200 || request.status >= 300) {
+                reject(new Error(payload.error || "Upload failed."));
+                return;
+              }
+
+              resolve(payload);
+            } catch {
+              reject(new Error("Upload failed unexpectedly."));
+            }
+          };
+
+          request.send(formData);
+        });
+      } finally {
+        if (indexingInterval) {
+          window.clearInterval(indexingInterval);
+        }
+      }
 
       setUploadStage("ready");
       setUploadProgress(100);
@@ -218,6 +324,7 @@ export default function UploadPage() {
       } catch (error) {
         console.warn("Local PDF extraction failed before reindex.", error);
       }
+      const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
 
       const response = await fetch("/api/index", {
         method: "POST",
@@ -226,7 +333,7 @@ export default function UploadPage() {
         },
         body: JSON.stringify({
           documentId,
-          parsedPdf,
+          parsedPdf: inlineParsedPdf,
         }),
       });
       const data = await response.json();
@@ -383,7 +490,7 @@ export default function UploadPage() {
                 <UploadCloud className="h-10 w-10" />
               </div>
               <h3 className="text-2xl font-bold text-white mb-3">Drop Asset</h3>
-              <p className="text-sm leading-relaxed text-slate-500 max-w-[200px] mx-auto font-medium">Selective indexing for documents up to 15MB.</p>
+              <p className="text-sm leading-relaxed text-slate-500 max-w-[200px] mx-auto font-medium">Selective indexing for documents up to 25MB.</p>
               
               <input 
                 type="file" 
