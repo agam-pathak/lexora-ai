@@ -229,18 +229,7 @@ export async function parsePdfFile(filePath: string): Promise<ParsedPdfDocument>
       text,
       pageCount,
       extractionMode,
-      pages:
-        pages.length > 0
-          ? pages
-          : [
-              {
-                pageNumber: 1,
-                text:
-                  extractionMode === "ocr-recommended"
-                    ? "This PDF appears to contain image-based or scanned pages. OCR is recommended before grounded answers can extract detailed content."
-                    : text,
-              },
-            ],
+      pages,
     };
   } finally {
     await parser.destroy();

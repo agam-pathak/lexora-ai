@@ -35,7 +35,9 @@ export async function retrieveRelevantChunks({
   searchMode = "document",
 }: RetrieveChunksOptions) {
   if (searchMode === "all" || !documentId) {
-    const documents = await getDocuments(userId);
+    const documents = (await getDocuments(userId)).filter(
+      (document) => document.chunkCount > 0,
+    );
 
     if (documents.length === 0) {
       return [];

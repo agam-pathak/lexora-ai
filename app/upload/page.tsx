@@ -12,7 +12,9 @@ import {
   UploadCloud,
   Layers,
   FileCheck2,
+  RefreshCcw,
   TableProperties,
+  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -50,6 +52,7 @@ export default function UploadPage() {
   const [searchValue, setSearchValue] = useState("");
   const [sortMode, setSortMode] = useState("recent");
   const [deletingDocumentId, setDeletingDocumentId] = useState("");
+  const [reindexingDocumentId, setReindexingDocumentId] = useState("");
   const [lastIndexedDocument, setLastIndexedDocument] = useState<IndexedDocument | null>(null);
 
   async function loadDocuments() {
@@ -171,6 +174,35 @@ export default function UploadPage() {
     }
   }
 
+  async function reindexIndexedDocument(documentId: string) {
+    setReindexingDocumentId(documentId);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch("/api/index", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ documentId }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Reindex failed.");
+      }
+
+      setStatusMessage(data.message || "Document reindexed successfully.");
+      await loadDocuments();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Reindex failed unexpectedly.",
+      );
+    } finally {
+      setReindexingDocumentId("");
+    }
+  }
+
   const filteredDocuments = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
     const nextDocuments = documents.filter((doc) =>
@@ -249,6 +281,19 @@ export default function UploadPage() {
                                <span>{formatBytes(doc.sizeBytes)}</span>
                                <span className="opacity-30">|</span>
                                <span>Indexed {formatIndexedAt(doc.indexedAt)}</span>
+                               {doc.chunkCount === 0 ? (
+                                 <>
+                                   <span className="opacity-30">|</span>
+                                   <span className="flex items-center gap-1.5 text-amber-400">
+                                     <TriangleAlert className="h-3 w-3" /> OCR Needed
+                                   </span>
+                                 </>
+                               ) : doc.extractionMode === "ocr" ? (
+                                 <>
+                                   <span className="opacity-30">|</span>
+                                   <span className="text-cyan-400">OCR Indexed</span>
+                                 </>
+                               ) : null}
                             </div>
                           </div>
                        </div>
@@ -256,6 +301,18 @@ export default function UploadPage() {
                           <Link href={`/chat?doc=${doc.id}`} title="Open in Workspace" className="rounded-xl p-3 text-slate-500 hover:bg-cyan-500/10 hover:text-cyan-400 transition-all">
                              <ArrowRight className="h-5 w-5" />
                           </Link>
+                          <button
+                            onClick={() => reindexIndexedDocument(doc.id)}
+                            disabled={reindexingDocumentId === doc.id}
+                            title="Reindex Document"
+                            className="rounded-xl p-3 text-slate-500 hover:bg-emerald-500/10 hover:text-emerald-400 transition-all"
+                          >
+                            {reindexingDocumentId === doc.id ? (
+                              <LoaderCircle className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <RefreshCcw className="h-5 w-5" />
+                            )}
+                          </button>
                           <button 
                             onClick={() => deleteIndexedDocument(doc.id)}
                             disabled={deletingDocumentId === doc.id}

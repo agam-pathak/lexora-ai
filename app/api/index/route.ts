@@ -9,6 +9,7 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
@@ -30,10 +31,18 @@ export async function POST(request: Request) {
         session.userId,
         body.documentId.trim(),
       );
+      const extractionLimited =
+        document.chunkCount === 0 &&
+        document.extractionMode === "ocr-recommended";
 
       return NextResponse.json({
-        message: "Document reindexed successfully.",
+        message: extractionLimited
+          ? "Document reindexed, but OCR text extraction still did not produce searchable content."
+          : "Document reindexed successfully.",
         document,
+        warning: extractionLimited
+          ? "No searchable text was indexed for this PDF."
+          : undefined,
       });
     }
 

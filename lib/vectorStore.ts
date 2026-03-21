@@ -13,9 +13,15 @@ import path from "node:path";
 import { chunkText } from "@/lib/chunkText";
 import { embedTexts } from "@/lib/embeddings";
 import { withFileLock } from "@/lib/file-lock";
-import { getSupabaseAdminClient, isSupabaseConfigured, SUPABASE_TABLES } from "@/lib/supabase";
+import {
+  getSupabaseAdminClient,
+  isSupabaseConfigured,
+  SUPABASE_RPC,
+  SUPABASE_TABLES,
+} from "@/lib/supabase";
 
 import {
+  deleteUserUpload,
   ensurePrivateUploadAvailable,
   ensureUserWorkspaceDirectories,
   LEGACY_INDEX_ROOT,
@@ -62,6 +68,38 @@ type DocumentRow = {
   last_opened_at: string | null;
 };
 
+type ChunkRow = {
+  id: string;
+  user_id: string;
+  document_id: string;
+  embedding_model: string;
+  chunk_index: number;
+  content: string;
+  embedding: string;
+  start_offset: number;
+  end_offset: number;
+  page_start: number;
+  page_end: number;
+  source: string;
+  file_url: string;
+  created_at?: string;
+};
+
+type MatchedChunkRow = {
+  id: string;
+  document_id: string;
+  embedding_model: string;
+  chunk_index: number;
+  content: string;
+  start_offset: number;
+  end_offset: number;
+  page_start: number;
+  page_end: number;
+  source: string;
+  file_url: string;
+  score: number;
+};
+
 type IndexDocumentInput = {
   userId: string;
   documentId?: string;
@@ -75,6 +113,11 @@ const LEGACY_UPLOADS_ROOT = LEGACY_PUBLIC_UPLOADS_ROOT;
 
 export const DEFAULT_CHUNK_SIZE = 1000;
 export const DEFAULT_CHUNK_OVERLAP = 200;
+const PLACEHOLDER_CHUNK_SNIPPETS = [
+  "wait for system maintenance to restore deep indexing for this document type",
+  "this pdf appears to contain image based or scanned pages ocr is recommended before grounded answers can extract detailed content",
+  "the system could not extract text from this pdf because the parser worker encountered an environment limitation",
+];
 
 function normalizeVector(values: number[]) {
   const magnitude = Math.sqrt(
@@ -97,6 +140,71 @@ function dotProduct(left: number[], right: number[]) {
   }
 
   return sum;
+}
+
+function normalizeChunkText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isPlaceholderChunkText(text: string) {
+  const normalizedText = normalizeChunkText(text);
+
+  if (!normalizedText) {
+    return true;
+  }
+
+  return PLACEHOLDER_CHUNK_SNIPPETS.some((snippet) =>
+    normalizedText.includes(snippet),
+  );
+}
+
+function filterPlaceholderSearchResults(chunks: RetrievedChunk[]) {
+  return chunks.filter((chunk) => !isPlaceholderChunkText(chunk.text));
+}
+
+function toSupabaseVectorLiteral(embedding: number[]) {
+  return `[${embedding.join(",")}]`;
+}
+
+function toChunkRow(
+  userId: string,
+  embeddingModel: string,
+  chunk: StoredChunkRecord,
+): ChunkRow {
+  return {
+    id: chunk.id,
+    user_id: userId,
+    document_id: chunk.metadata.documentId,
+    embedding_model: embeddingModel,
+    chunk_index: chunk.metadata.chunkIndex,
+    content: chunk.text,
+    embedding: toSupabaseVectorLiteral(chunk.embedding),
+    start_offset: chunk.metadata.start,
+    end_offset: chunk.metadata.end,
+    page_start: chunk.metadata.pageStart,
+    page_end: chunk.metadata.pageEnd,
+    source: chunk.metadata.source,
+    file_url: chunk.metadata.fileUrl,
+  };
+}
+
+function fromMatchedChunkRow(row: MatchedChunkRow): RetrievedChunk {
+  return {
+    documentId: row.document_id,
+    source: row.source,
+    chunkIndex: row.chunk_index,
+    start: row.start_offset,
+    end: row.end_offset,
+    pageStart: row.page_start,
+    pageEnd: row.page_end,
+    fileUrl: row.file_url,
+    text: row.content,
+    score: row.score,
+  };
 }
 
 function resolveIndexFile(userId: string, documentId: string) {
@@ -159,6 +267,29 @@ async function readJsonFile<T>(filePath: string, fallback: T) {
   }
 }
 
+async function readDocumentIndexFromFile(userId: string, documentId: string) {
+  return readJsonFile<DocumentIndexFile | null>(
+    resolveIndexFile(userId, documentId),
+    null,
+  );
+}
+
+async function writeDocumentIndexToFile(
+  userId: string,
+  documentId: string,
+  documentIndex: DocumentIndexFile,
+) {
+  await writeFile(
+    resolveIndexFile(userId, documentId),
+    JSON.stringify(documentIndex, null, 2),
+    "utf8",
+  );
+}
+
+async function deleteDocumentIndexFromFile(userId: string, documentId: string) {
+  await removeFileIfExists(resolveIndexFile(userId, documentId));
+}
+
 async function writeUserManifest(userId: string, documents: IndexedDocument[]) {
   if (isSupabaseConfigured()) {
     await writeUserManifestToSupabase(userId, documents);
@@ -203,6 +334,100 @@ function toDocumentRow(userId: string, document: IndexedDocument): DocumentRow {
     bookmarked_pages: document.bookmarkedPages ?? [],
     last_opened_at: document.lastOpenedAt ?? null,
   };
+}
+
+async function deleteSupabaseChunksForDocument(documentId: string) {
+  const supabase = getSupabaseAdminClient();
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from(SUPABASE_TABLES.chunks)
+    .delete()
+    .eq("document_id", documentId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function writeChunksToSupabase(
+  userId: string,
+  documentId: string,
+  embeddingModel: string,
+  chunks: StoredChunkRecord[],
+) {
+  const supabase = getSupabaseAdminClient();
+
+  if (!supabase) {
+    return;
+  }
+
+  await deleteSupabaseChunksForDocument(documentId);
+
+  for (let index = 0; index < chunks.length; index += 100) {
+    const batch = chunks.slice(index, index + 100);
+    const { error } = await supabase
+      .from(SUPABASE_TABLES.chunks)
+      .insert(batch.map((chunk) => toChunkRow(userId, embeddingModel, chunk)));
+
+    if (error) {
+      throw error;
+    }
+  }
+}
+
+async function syncLocalIndexToSupabase(userId: string, documentId: string) {
+  const documentIndex = await readDocumentIndexFromFile(userId, documentId);
+
+  if (!documentIndex) {
+    return false;
+  }
+
+  await writeChunksToSupabase(
+    userId,
+    documentId,
+    documentIndex.document.embeddingModel,
+    documentIndex.chunks,
+  );
+
+  return true;
+}
+
+async function searchSupabaseChunks(
+  userId: string,
+  queryEmbedding: number[],
+  topK: number,
+  options: {
+    documentId?: string;
+    documentIds?: string[];
+    embeddingModel?: string;
+  } = {},
+): Promise<RetrievedChunk[]> {
+  const supabase = getSupabaseAdminClient();
+
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc(SUPABASE_RPC.matchChunks, {
+    query_embedding: toSupabaseVectorLiteral(normalizeVector(queryEmbedding)),
+    filter_user_id: userId,
+    match_count: topK,
+    filter_document_id: options.documentId ?? null,
+    filter_document_ids: options.documentIds?.length ? options.documentIds : null,
+    filter_embedding_model: options.embeddingModel ?? null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data as MatchedChunkRow[] | null) ?? []).map((row) =>
+    fromMatchedChunkRow(row),
+  );
 }
 
 async function readUserManifestFromFile(userId: string) {
@@ -428,11 +653,17 @@ export async function migrateLegacyDocumentsToUser(userId: string) {
       })),
     };
 
-    await writeFile(
-      resolveIndexFile(userId, nextDocument.id),
-      JSON.stringify(nextIndex, null, 2),
-      "utf8",
-    );
+    await writeDocumentIndexToFile(userId, nextDocument.id, nextIndex);
+
+    if (isSupabaseConfigured()) {
+      await writeChunksToSupabase(
+        userId,
+        nextDocument.id,
+        nextDocument.embeddingModel,
+        nextIndex.chunks,
+      );
+    }
+
     await removeFileIfExists(resolveLegacyIndexFile(nextDocument.id));
     migratedDocuments.push(nextDocument);
   }
@@ -548,9 +779,9 @@ export async function indexDocument(input: IndexDocumentInput) {
   } catch (error) {
     console.error("PDF Parsing Failure:", error);
     parsedPdf = {
-      text: "The system could not extract text from this PDF because the parser worker encountered an environment limitation. You can still use the document shell for metadata purposes.",
+      text: "",
       pageCount: 1,
-      pages: [{ pageNumber: 1, text: "Wait for system maintenance to restore deep indexing for this document type." }],
+      pages: [],
       extractionMode: "ocr-recommended" as const,
     };
   }
@@ -558,18 +789,12 @@ export async function indexDocument(input: IndexDocumentInput) {
   const chunks = chunkText(parsedPdf.pages, {
     chunkSize: DEFAULT_CHUNK_SIZE,
     overlap: DEFAULT_CHUNK_OVERLAP,
-  });
+  }).filter((chunk) => !isPlaceholderChunkText(chunk.text));
 
   if (chunks.length === 0) {
-    console.warn("No chunks extracted, using fallback chunk.");
-    chunks.push({
-      chunkIndex: 0,
-      text: parsedPdf.text || "Empty document skeleton created.",
-      start: 0,
-      end: (parsedPdf.text || "").length,
-      pageStart: 1,
-      pageEnd: 1,
-    });
+    console.warn(
+      `No searchable text was extracted for document ${documentId}.`,
+    );
   }
 
   const embeddingResult = await embedTexts(chunks.map((chunk) => chunk.text));
@@ -610,11 +835,17 @@ export async function indexDocument(input: IndexDocumentInput) {
     chunks: storedChunks,
   };
 
-  await writeFile(
-    resolveIndexFile(input.userId, documentId),
-    JSON.stringify(documentIndex, null, 2),
-    "utf8",
-  );
+  if (isSupabaseConfigured()) {
+    await writeChunksToSupabase(
+      input.userId,
+      documentId,
+      document.embeddingModel,
+      storedChunks,
+    );
+    await deleteDocumentIndexFromFile(input.userId, documentId);
+  } else {
+    await writeDocumentIndexToFile(input.userId, documentId, documentIndex);
+  }
 
   const documents = await getDocuments(input.userId);
   const nextDocuments = [
@@ -632,11 +863,49 @@ export async function searchIndexedDocument(
   documentId: string,
   queryEmbedding: number[],
   topK = 4,
+  allowRepair = true,
 ): Promise<RetrievedChunk[]> {
-  const documentIndex = await readJsonFile<DocumentIndexFile | null>(
-    resolveIndexFile(userId, documentId),
-    null,
-  );
+  if (isSupabaseConfigured()) {
+    const searchWindow = Math.max(topK * 3, 8);
+    let supabaseResults = await searchSupabaseChunks(
+      userId,
+      queryEmbedding,
+      searchWindow,
+      { documentId },
+    );
+
+    if (supabaseResults.length === 0) {
+      const synced = await syncLocalIndexToSupabase(userId, documentId);
+
+      if (synced) {
+        supabaseResults = await searchSupabaseChunks(
+          userId,
+          queryEmbedding,
+          searchWindow,
+          { documentId },
+        );
+      }
+    }
+
+    const filteredResults = filterPlaceholderSearchResults(supabaseResults).slice(0, topK);
+
+    if (
+      filteredResults.length === 0 &&
+      supabaseResults.length > 0 &&
+      allowRepair
+    ) {
+      try {
+        await reindexDocument(userId, documentId);
+        return searchIndexedDocument(userId, documentId, queryEmbedding, topK, false);
+      } catch (error) {
+        console.warn("Document auto-reindex failed after placeholder retrieval.", error);
+      }
+    }
+
+    return filteredResults;
+  }
+
+  const documentIndex = await readDocumentIndexFromFile(userId, documentId);
 
   if (!documentIndex) {
     return [];
@@ -644,14 +913,30 @@ export async function searchIndexedDocument(
 
   const normalizedQuery = normalizeVector(queryEmbedding);
 
-  return documentIndex.chunks
+  const localResults = documentIndex.chunks
     .map((chunk) => ({
       ...chunk.metadata,
       text: chunk.text,
       score: dotProduct(chunk.embedding, normalizedQuery),
     }))
-    .sort((left, right) => right.score - left.score)
-    .slice(0, topK);
+    .sort((left, right) => right.score - left.score);
+
+  const filteredResults = filterPlaceholderSearchResults(localResults).slice(0, topK);
+
+  if (
+    filteredResults.length === 0 &&
+    localResults.length > 0 &&
+    allowRepair
+  ) {
+    try {
+      await reindexDocument(userId, documentId);
+      return searchIndexedDocument(userId, documentId, queryEmbedding, topK, false);
+    } catch (error) {
+      console.warn("Document auto-reindex failed after placeholder retrieval.", error);
+    }
+  }
+
+  return filteredResults;
 }
 
 export async function searchAcrossIndexedDocuments(
@@ -660,6 +945,36 @@ export async function searchAcrossIndexedDocuments(
   topK = 4,
   documentIds?: string[],
 ): Promise<RetrievedChunk[]> {
+  if (isSupabaseConfigured()) {
+    const searchWindow = Math.max(topK * 3, 8);
+    let supabaseResults = await searchSupabaseChunks(
+      userId,
+      queryEmbedding,
+      searchWindow,
+      { documentIds },
+    );
+
+    if (supabaseResults.length === 0 && documentIds?.length) {
+      let didSyncAny = false;
+
+      for (const documentId of documentIds) {
+        didSyncAny =
+          (await syncLocalIndexToSupabase(userId, documentId)) || didSyncAny;
+      }
+
+      if (didSyncAny) {
+        supabaseResults = await searchSupabaseChunks(
+          userId,
+          queryEmbedding,
+          searchWindow,
+          { documentIds },
+        );
+      }
+    }
+
+    return filterPlaceholderSearchResults(supabaseResults).slice(0, topK);
+  }
+
   const documents = documentIds?.length
     ? (
         await Promise.all(
@@ -704,8 +1019,12 @@ export async function deleteDocument(userId: string, documentId: string) {
     return null;
   }
 
-  await removeFileIfExists(resolveIndexFile(userId, documentId));
-  await removeFileIfExists(resolveUserUploadFilePath(userId, document.fileName));
+  if (isSupabaseConfigured()) {
+    await deleteSupabaseChunksForDocument(documentId);
+  }
+
+  await deleteDocumentIndexFromFile(userId, documentId);
+  await deleteUserUpload(userId, document.fileName);
   await removeFileIfExists(resolveLegacyPublicFilePath(document.fileUrl));
 
   const documents = await getDocuments(userId);

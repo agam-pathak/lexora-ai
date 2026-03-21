@@ -1,19 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import {
-  resolveUserUploadFilePath,
+  persistUserUpload,
   resolveUserUploadUrl,
-  resolveUserUploadsRoot,
 } from "@/lib/storage";
 import { indexDocument } from "@/lib/vectorStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 
@@ -77,13 +76,15 @@ export async function POST(request: Request) {
     }
 
     const safeFileName = sanitizePdfFilename(uploadedFile.name);
-    const uploadsDirectory = resolveUserUploadsRoot(session.userId);
     const fileUrl = resolveUserUploadUrl(session.userId, safeFileName);
-    const filePath = resolveUserUploadFilePath(session.userId, safeFileName);
     const buffer = Buffer.from(await uploadedFile.arrayBuffer());
 
-    await mkdir(uploadsDirectory, { recursive: true });
-    await writeFile(filePath, buffer);
+    await persistUserUpload(
+      session.userId,
+      safeFileName,
+      buffer,
+      uploadedFile.type || "application/pdf",
+    );
 
     const document = await indexDocument({
       userId: session.userId,
@@ -93,11 +94,18 @@ export async function POST(request: Request) {
       fileUrl,
       sizeBytes: buffer.byteLength,
     });
+    const extractionLimited =
+      document.chunkCount === 0 && document.extractionMode === "ocr-recommended";
 
     return NextResponse.json(
       {
-        message: "Document uploaded and indexed successfully.",
+        message: extractionLimited
+          ? "Document uploaded, but OCR text extraction did not complete in this deployment. Reindex after OCR is available to generate grounded answers."
+          : "Document uploaded and indexed successfully.",
         document,
+        warning: extractionLimited
+          ? "No searchable text was indexed for this PDF."
+          : undefined,
       },
       { status: 201 },
     );

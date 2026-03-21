@@ -13,6 +13,7 @@ import { getDocument, getDocuments } from "@/lib/vectorStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are a premium AI research assistant. You answer questions strictly using the provided document context.
 
@@ -181,6 +182,13 @@ export async function POST(request: Request) {
       searchMode === "all"
         ? "The information is not available in the indexed documents."
         : "The information is not available in this document.";
+    const extractionUnavailableMessage =
+      searchMode === "document" &&
+      document &&
+      document.chunkCount === 0 &&
+      document.extractionMode === "ocr-recommended"
+        ? "This PDF was uploaded, but Lexora could not extract searchable text from it in the current deployment. OCR indexing is unavailable for this document right now, so grounded answers cannot be generated yet."
+        : unavailableMessage;
 
     if (retrievedChunks.length === 0) {
       const conversation = await persistConversationExchange({
@@ -189,11 +197,11 @@ export async function POST(request: Request) {
         documentId:
           searchMode === "all" ? ALL_DOCUMENTS_SCOPE_ID : documentId,
         question,
-        answer: unavailableMessage,
+        answer: extractionUnavailableMessage,
       });
 
       return NextResponse.json({
-        answer: unavailableMessage,
+        answer: extractionUnavailableMessage,
         sources: [],
         document,
         conversation: summarizeConversation(conversation),

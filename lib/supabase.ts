@@ -18,6 +18,11 @@ export const SUPABASE_TABLES = {
   documents: "lexora_documents",
   conversations: "lexora_conversations",
   messages: "lexora_messages",
+  chunks: "lexora_document_chunks",
+} as const;
+
+export const SUPABASE_RPC = {
+  matchChunks: "match_lexora_document_chunks",
 } as const;
 
 export function isSupabaseConfigured() {
@@ -46,4 +51,3 @@ export function getSupabaseAdminClient() {
 
   return globalScope.__lexoraSupabaseAdmin;
 }
-
