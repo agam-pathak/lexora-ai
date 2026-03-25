@@ -4,6 +4,9 @@ import type { Metadata } from "next";
 import AppShell from "@/components/AppShell";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { getSession } from "@/lib/auth";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { PostHogProvider } from "@/components/PostHogProvider";
 
 import "./globals.css";
 
@@ -28,9 +31,13 @@ export default async function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-background text-foreground antialiased font-sans">
-        <ErrorBoundary>
-          <AppShell session={session}>{children}</AppShell>
-        </ErrorBoundary>
+        <PostHogProvider>
+          <ErrorBoundary>
+            <AppShell session={session}>{children}</AppShell>
+          </ErrorBoundary>
+          <Analytics />
+          <SpeedInsights />
+        </PostHogProvider>
       </body>
     </html>
   );
