@@ -13,6 +13,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { useToast } from "@/components/ui/Toast";
 
 type AuthMode = "signin" | "signup" | "forgot" | "reset";
 
@@ -41,6 +42,7 @@ const modeCopy: Record<AuthMode, { title: string; subtitle: string; submitLabel:
 function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { addToast } = useToast();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [form, setForm] = useState<FormState>({ name: "", email: "", password: "", confirmPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -94,6 +96,7 @@ function AuthPageContent() {
       if (!res.ok) throw new Error(data.error || "Auth failed.");
       
       if (mode === "forgot") {
+        addToast(data.message || "Reset link sent to your email.", "success");
         setStatusMessage(data.message);
         setResetPreviewPath(
           typeof data.resetPath === "string" ? data.resetPath : "",
@@ -103,6 +106,7 @@ function AuthPageContent() {
         );
       } else if (mode === "reset") {
         setMode("signin");
+        addToast("Password reset successful. Please sign in.", "success");
         setStatusMessage("Password reset successful. Please sign in.");
         setForm({
           name: "",
@@ -111,11 +115,14 @@ function AuthPageContent() {
           confirmPassword: "",
         });
       } else {
+        addToast("Welcome to Lexora AI!", "success");
         router.push(redirectPath);
         router.refresh();
       }
     } catch (e: unknown) {
-      setErrorMessage(e instanceof Error ? e.message : "Auth failed.");
+      const msg = e instanceof Error ? e.message : "Auth failed.";
+      setErrorMessage(msg);
+      addToast(msg, "error");
     } finally {
       setSubmitting(false);
     }

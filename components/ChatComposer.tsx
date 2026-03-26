@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 
 import type { IndexedDocument } from "@/lib/types";
@@ -18,6 +19,9 @@ type ChatComposerProps = {
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 };
 
+const MIN_HEIGHT = 44;
+const MAX_HEIGHT = 160;
+
 export default function ChatComposer({
   question,
   searchMode,
@@ -29,6 +33,21 @@ export default function ChatComposer({
   onSend,
   onKeyDown,
 }: ChatComposerProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), MAX_HEIGHT);
+    el.style.height = `${next}px`;
+  }, []);
+
+  // Re-measure whenever the question value changes (including clear-on-send)
+  useEffect(() => {
+    autoResize();
+  }, [question, autoResize]);
+
   return (
     <div className="border-t border-white/[0.06] bg-[rgba(6,8,16,0.6)] px-4 py-3">
       <div className="flex items-center gap-2 pb-2 text-[10px] text-slate-500">
@@ -40,6 +59,7 @@ export default function ChatComposer({
 
       <div className="relative flex items-end rounded-xl border border-white/[0.08] bg-white/[0.03] pr-1.5 transition-colors focus-within:border-cyan-400/30 focus-within:bg-white/[0.04]">
         <textarea
+          ref={textareaRef}
           value={question}
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={onKeyDown}
@@ -52,7 +72,8 @@ export default function ChatComposer({
           }
           disabled={!canAskQuestion || loading}
           rows={1}
-          className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] flex-1 resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60 transition-[height] duration-100 ease-out"
+          style={{ height: MIN_HEIGHT }}
         />
 
         <button

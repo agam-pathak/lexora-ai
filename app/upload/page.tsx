@@ -25,6 +25,7 @@ import {
   extractPdfDocumentFromUrl,
 } from "@/lib/clientPdfExtraction";
 import type { IndexedDocument, ParsedPdfDocument } from "@/lib/types";
+import { useToast } from "@/components/ui/Toast";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_INLINE_PARSED_PDF_BYTES = 1.5 * 1024 * 1024;
@@ -107,6 +108,7 @@ function formatIndexedAt(indexedAt: string) {
 
 export default function UploadPage() {
   const router = useRouter();
+  const { addToast } = useToast();
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
@@ -282,11 +284,14 @@ export default function UploadPage() {
       setUploadStage("ready");
       setUploadProgress(100);
       setStatusMessage(data.message || "Document uploaded successfully.");
+      addToast(data.message || "Document uploaded and indexed successfully.", "success", 5000);
       setLastIndexedDocument(data.document);
       setSelectedFile(null);
       await loadDocuments();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Upload failed unexpectedly.");
+      const msg = error instanceof Error ? error.message : "Upload failed unexpectedly.";
+      setErrorMessage(msg);
+      addToast(msg, "error", 6000);
       setUploadStage("error");
     } finally {
       setUploading(false);
@@ -298,7 +303,10 @@ export default function UploadPage() {
     try {
       const response = await fetch(`/api/files/${documentId}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Delete failed.");
+      addToast("Document deleted from library.", "info");
       await loadDocuments();
+    } catch {
+      addToast("Failed to delete the document.", "error");
     } finally {
       setDeletingDocumentId("");
     }
@@ -343,11 +351,12 @@ export default function UploadPage() {
       }
 
       setStatusMessage(data.message || "Document reindexed successfully.");
+      addToast(data.message || "Document reindexed successfully.", "success");
       await loadDocuments();
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Reindex failed unexpectedly.",
-      );
+      const msg = error instanceof Error ? error.message : "Reindex failed unexpectedly.";
+      setErrorMessage(msg);
+      addToast(msg, "error");
     } finally {
       setReindexingDocumentId("");
     }

@@ -314,17 +314,12 @@ function ChatWorkspace() {
   );
 }
 
+import { WorkspaceLoadingSkeleton } from "@/components/ui/Skeleton";
+
 export default function ChatPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
-            <p className="text-sm text-slate-400">Loading workspace…</p>
-          </div>
-        </div>
-      }
+      fallback={<WorkspaceLoadingSkeleton />}
     >
       <ChatWorkspace />
     </Suspense>

@@ -1,17 +1,27 @@
 "use client";
 
-import { pdfjs } from "react-pdf";
-
 import {
   buildParsedPdfDocument,
   normalizeExtractedText,
 } from "@/lib/parsedPdf";
 import type { ParsedPdfDocument, ParsedPdfPage } from "@/lib/types";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+// Dynamic PDF.js loader to prevent SSR issues (e.g., DOMMatrix not defined)
+async function getPdfJs() {
+  if (typeof window === "undefined") {
+    throw new Error("PDF extraction is only supported on the client side.");
+  }
+  const { pdfjs } = await import("react-pdf");
+  
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      import.meta.url,
+    ).toString();
+  }
+  
+  return pdfjs;
+}
 
 function isPdfJsTextItem(
   value: unknown,
@@ -51,6 +61,7 @@ function normalizeClientPageText(items: unknown[]) {
 export async function extractPdfDocumentFromArrayBuffer(
   arrayBuffer: ArrayBuffer,
 ): Promise<ParsedPdfDocument> {
+  const pdfjs = await getPdfJs();
   const loadingTask = pdfjs.getDocument({
     data: arrayBuffer,
     useWorkerFetch: false,

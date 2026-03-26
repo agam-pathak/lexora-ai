@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 
 import type { ConversationSummary } from "@/lib/types";
+import { ThreadChipSkeleton } from "./ui/Skeleton";
 
 type ThreadHistoryProps = {
   conversationSummaries: ConversationSummary[];
@@ -56,6 +57,8 @@ export default function ThreadHistory({
     return null;
   }
 
+  const showSkeleton = loadingConversations && conversationSummaries.length === 0;
+
   return (
     <div className="border-b border-white/[0.06] px-4 py-2">
       <div className="flex items-center justify-between gap-2">
@@ -78,6 +81,12 @@ export default function ThreadHistory({
           New
         </button>
       </div>
+
+      {showSkeleton && (
+        <div className="mt-2 pb-1">
+          <ThreadChipSkeleton />
+        </div>
+      )}
 
       {conversationSummaries.length > 0 && (
         <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">

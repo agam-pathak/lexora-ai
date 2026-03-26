@@ -23,10 +23,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 
 import type { ChatSource, IndexedDocument } from "@/lib/types";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-  import.meta.url,
-).toString();
+// The workerSrc is set inside the component to avoid SSR errors.
 
 type ViewerPanel = "source" | "notes" | "bookmarks";
 
@@ -101,6 +98,16 @@ export default function PDFViewer({
   const [activePanel, setActivePanel] = useState<ViewerPanel>("source");
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+
+  useEffect(() => {
+    // Only set worker on the client
+    if (typeof window !== "undefined") {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+        import.meta.url,
+      ).toString();
+    }
+  }, []);
   const fileUrl = document?.fileUrl ?? null;
   const bookmarkedPages = useMemo(
     () => document?.bookmarkedPages ?? [],

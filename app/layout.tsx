@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import AppShell from "@/components/AppShell";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { getSession } from "@/lib/auth";
+import { cookies } from "next/headers";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PostHogProvider } from "@/components/PostHogProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 
 import "./globals.css";
 
@@ -27,14 +29,18 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession();
+  const cookieStore = await cookies();
+  const avatarUrl = cookieStore.get("lexora_avatar")?.value || "/avatars/avatar1.png";
 
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-background text-foreground antialiased font-sans">
         <PostHogProvider>
-          <ErrorBoundary>
-            <AppShell session={session}>{children}</AppShell>
-          </ErrorBoundary>
+          <ToastProvider>
+            <ErrorBoundary>
+              <AppShell session={session} avatarUrl={avatarUrl}>{children}</AppShell>
+            </ErrorBoundary>
+          </ToastProvider>
           <Analytics />
           <SpeedInsights />
         </PostHogProvider>

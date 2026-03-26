@@ -18,6 +18,7 @@ import type {
 
 import ChatComposer from "./ChatComposer";
 import ChatHeader from "./ChatHeader";
+import { MessageSkeleton } from "./ui/Skeleton";
 import MessageBubble from "./MessageBubble";
 import ThreadHistory from "./ThreadHistory";
 import TypingIndicator from "./TypingIndicator";
@@ -851,8 +852,10 @@ export default function ChatBox({
       {/* ── Messages area ── */}
       <div className="relative flex-1 min-h-0 overflow-y-auto px-4 py-4">
         {loadingConversationDetail ? (
-          <div className="pb-3 text-xs text-slate-500">
-            Loading thread…
+          <div className="space-y-4 pb-3">
+            <MessageSkeleton />
+            <div className="flex justify-end"><div className="h-10 w-48 animate-pulse rounded-2xl rounded-br-md bg-white/[0.06]" /></div>
+            <MessageSkeleton />
           </div>
         ) : null}
 

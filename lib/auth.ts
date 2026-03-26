@@ -425,6 +425,60 @@ export async function createUser({ name, email, password }: CreateUserInput) {
   return user;
 }
 
+export async function updateUserProfile(userId: string, updates: { name: string }) {
+  const normalizedName = normalizeName(updates.name);
+
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdminClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from(SUPABASE_TABLES.users)
+        .update({
+          name: normalizedName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Update fallback JSON just in case they are mirrored
+      const store = await readUsersStoreFromFile();
+      const userIndex = store.users.findIndex((u) => u.id === userId);
+      if (userIndex >= 0) {
+        const nextUsers = [...store.users];
+        nextUsers[userIndex] = {
+          ...nextUsers[userIndex],
+          name: normalizedName,
+          updatedAt: new Date().toISOString(),
+        };
+        await writeUsersStoreToFile(nextUsers);
+      }
+
+      return fromStoredUserRow(data as StoredUserRow);
+    }
+  }
+
+  // Pure JSON fallback path
+  const store = await readUsersStoreFromFile();
+  const userIndex = store.users.findIndex((u) => u.id === userId);
+  if (userIndex >= 0) {
+    const nextUsers = [...store.users];
+    nextUsers[userIndex] = {
+      ...nextUsers[userIndex],
+      name: normalizedName,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeUsersStoreToFile(nextUsers);
+    return nextUsers[userIndex];
+  }
+
+  throw new Error("User not found in datastore");
+}
+
 export async function authenticateUser(email: string, password: string) {
   const user = await findUserByEmail(email);
 

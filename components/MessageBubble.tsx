@@ -1,6 +1,7 @@
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, Search, Copy, RefreshCcw, ThumbsUp, ThumbsDown, Check } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { useToast } from "./ui/Toast";
 
 import type { ChatSource } from "@/lib/types";
 
@@ -26,7 +27,11 @@ export default function MessageBubble({
   onFollowUpClick,
 }: MessageBubbleProps) {
   const isUser = role === "user";
+  const { addToast } = useToast();
   const [hoveredSourceIndex, setHoveredSourceIndex] = useState<number | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
 
   // Extract followups
   let mainText = text;
@@ -68,15 +73,71 @@ export default function MessageBubble({
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-md rounded-2xl rounded-br-md bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/10 px-4 py-3 text-sm text-slate-100">
+        <div className="max-w-md rounded-2xl rounded-br-md bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/10 px-4 py-3 text-sm text-slate-100 shadow-lg">
           <div className="whitespace-pre-wrap">{mainText}</div>
         </div>
       </div>
     );
   }
 
+  const copyToClipboard = () => {
+    const textToCopy = mainText.replace(/\[\d+\]/g, "");
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopied(true);
+      addToast("Message copied to clipboard", "success");
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleRegenerate = () => {
+    if (onFollowUpClick) {
+      addToast("Regenerating response...", "info");
+      onFollowUpClick("Regenerate"); // In ChatBox, this would ideally trigger a special regen logic, but for now we follow the existing pattern
+    }
+  };
+
   return (
-    <div className="space-y-3">
+    <div 
+      className="group relative space-y-4"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* ── Action Menu ── */}
+      {!isUser && (
+        <div className={`absolute -right-2 -top-2 z-20 flex items-center gap-1 rounded-xl border border-white/10 bg-slate-900/90 p-1 backdrop-blur-md shadow-xl transition-all duration-200 ${
+          isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1 pointer-events-none"
+        }`}>
+          <button
+            onClick={copyToClipboard}
+            className="rounded-lg p-2 text-slate-500 hover:bg-white/10 hover:text-white transition-colors"
+            title="Copy to clipboard"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            onClick={handleRegenerate}
+            className="rounded-lg p-2 text-slate-500 hover:bg-white/10 hover:text-white transition-colors"
+            title="Regenerate response"
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+          </button>
+          <div className="h-4 w-[1px] bg-white/10 mx-1" />
+          <button
+            onClick={() => { setFeedback("up"); addToast("Thanks for the feedback!", "success"); }}
+            className={`rounded-lg p-2 transition-colors ${feedback === "up" ? "text-emerald-400 bg-emerald-500/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
+            title="Good response"
+          >
+            <ThumbsUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => { setFeedback("down"); addToast("Sorry to hear that. I'll try to improve.", "info"); }}
+            className={`rounded-lg p-2 transition-colors ${feedback === "down" ? "text-rose-400 bg-rose-500/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
+            title="Bad response"
+          >
+            <ThumbsDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       {/* ── Source cards ── */}
       {sources.length > 0 ? (
         <div>
