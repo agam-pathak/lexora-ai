@@ -62,9 +62,9 @@ function createAssistantIntro(
     role: "assistant",
     text: document
       ? document.extractionMode === "ocr-recommended"
-        ? `"${document.name}" looks scan-heavy. I can keep it in the workspace, but detailed grounded answers may be limited until OCR is added.`
+        ? `"${document.name}" looks scan-heavy. I can keep it in the workspace, but detailed grounded answers may be limited until a 'Deep Scan' is performed.`
         : document.extractionMode === "ocr"
-          ? `"${document.name}" was indexed with OCR. Grounded answers are available, but the extracted text may be a little noisier than a native digital PDF.`
+          ? `"${document.name}" was indexed with a Deep Scan. Grounded answers are available, but the extracted text may be a little noisier than a native digital PDF.`
         : `Ready. Ask about "${document.name}" and I will answer from retrieved evidence only.`
       : "Select a document to start a grounded conversation.",
     createdAt: new Date(0).toISOString(),
@@ -95,9 +95,9 @@ function createPromptChips(
 
   if (document.extractionMode === "ocr-recommended") {
     return [
-      `What parts of "${document.name}" appear to be OCR-limited?`,
+      `What parts of "${document.name}" appear to be Deep Scan limited?`,
       "What metadata or visible structure can you still infer from this file?",
-      "How should I improve this document before asking detailed questions?",
+      "Can I run a Deep Scan now to improve retrieval quality?",
     ];
   }
 

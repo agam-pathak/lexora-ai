@@ -187,7 +187,7 @@ export async function POST(request: Request) {
       document &&
       document.chunkCount === 0 &&
       document.extractionMode === "ocr-recommended"
-        ? "This PDF was uploaded, but Lexora could not extract searchable text from it in the current deployment. OCR indexing is unavailable for this document right now, so grounded answers cannot be generated yet."
+        ? "This PDF was uploaded, but Lexora could not extract searchable text from it automatically. You can try triggering a 'Deep Scan' from the viewer header to run OCR on the document pages."
         : unavailableMessage;
 
     if (retrievedChunks.length === 0) {

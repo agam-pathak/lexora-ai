@@ -11,9 +11,11 @@ import {
   FileSearch,
   FileWarning,
   Layers,
+  Loader2,
   Minus,
   NotebookPen,
   Plus,
+  RefreshCw,
   SearchCheck,
   Star,
 } from "lucide-react";
@@ -98,6 +100,7 @@ export default function PDFViewer({
   const [activePanel, setActivePanel] = useState<ViewerPanel>("source");
   const [notesDraft, setNotesDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
 
   useEffect(() => {
     // Standard CDN worker for production reliability on Vercel
@@ -259,6 +262,40 @@ export default function PDFViewer({
     });
   }
 
+  async function reindex(forceOcr = false) {
+    if (!document?.id || reindexing) {
+      return;
+    }
+
+    setReindexing(true);
+
+    try {
+      const response = await fetch("/api/index", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documentId: document.id,
+          forceOcr,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Reindex failed.");
+      }
+
+      if (data.document) {
+        onDocumentUpdate?.(data.document);
+      }
+    } catch (error) {
+      console.warn("Manual reindex failed.", error);
+    } finally {
+      setReindexing(false);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
@@ -268,12 +305,21 @@ export default function PDFViewer({
               {document?.name ?? "Select a document"}
             </h2>
             {document?.extractionMode === "ocr-recommended" ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-amber-300">
-                <FileWarning className="h-3 w-3" />
-                OCR recommended
-              </span>
+              <button
+                type="button"
+                onClick={() => void reindex(true)}
+                disabled={reindexing}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300 transition hover:bg-amber-400/20 disabled:opacity-50"
+              >
+                {reindexing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <FileWarning className="h-3 w-3" />
+                )}
+                {reindexing ? "Deep Scanning..." : "Deep Scan Recommended"}
+              </button>
             ) : document?.extractionMode === "ocr" ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-cyan-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
                 <SearchCheck className="h-3 w-3" />
                 OCR indexed
               </span>
