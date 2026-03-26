@@ -432,20 +432,47 @@ export async function updateUserProfile(userId: string, updates: { name: string;
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdminClient();
     if (supabase) {
-      const { data, error } = await supabase
+      // Try the primary update
+      let { data, error } = await supabase
         .from(SUPABASE_TABLES.users)
         .upsert({
           id: userId,
           name: normalizedName,
-          email: updates.email || "", // Carry over email for new records
+          email: updates.email || "", 
           updated_at: new Date().toISOString(),
-        }, { onConflict: "id" }) // Upsert on conflict allows name updates
+        }, { onConflict: "id" })
         .select("*")
-        .single();
+        .maybeSingle();
+
+      // If we hit an email conflict (Duplicate email), find that user instead
+      if (error && error.code === '23505' && updates.email) {
+        const { data: existingUser } = await supabase
+          .from(SUPABASE_TABLES.users)
+          .select("*")
+          .eq("email", updates.email)
+          .maybeSingle();
+        
+        if (existingUser) {
+           // Update the EXISTING user instead of trying to create a third one
+           const { data: harmonized, error: harmonizedError } = await supabase
+             .from(SUPABASE_TABLES.users)
+             .update({
+               name: normalizedName,
+               updated_at: new Date().toISOString(),
+             })
+             .eq("id", existingUser.id)
+             .select("*")
+             .single();
+           
+           if (!harmonizedError) {
+             data = harmonized;
+             error = null;
+           }
+        }
+      }
 
       if (error) {
-        console.error("Supabase profile update error:", error);
-        throw new Error(`Database error: ${error.message}${error.hint ? ' - ' + error.hint : ''}`);
+        throw new Error(`Database error: ${error.message}`);
       }
 
       if (!data) {
