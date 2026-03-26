@@ -50,6 +50,11 @@ export async function updateProfile(name: string, avatarUrl: string) {
 
     return { success: true };
   } catch (error) {
+    // If it's a Next.js internal error (like a redirect), re-throw it
+    if (error instanceof Error && (error.message === "NEXT_REDIRECT" || "digest" in error)) {
+      throw error;
+    }
+    
     console.error("Profile update failed:", error);
     throw error instanceof Error ? error : new Error("An unexpected error occurred.");
   }
