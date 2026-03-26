@@ -38,7 +38,7 @@ export default function EditProfileModal({
       await updateProfile(name, avatar);
       setIsOpen(false);
     } catch (err) {
-      alert("Failed to update profile.");
+      alert(err instanceof Error ? err.message : "Failed to update profile.");
     } finally {
       setIsSubmitting(false);
     }
