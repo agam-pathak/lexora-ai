@@ -651,6 +651,16 @@ export function isLocalAuthHost(request: Request) {
 }
 
 export function sessionCookieConfig(value: string, secure: boolean) {
+  const payload = value.split(".")[0];
+  let expires = new Date(Date.now() + SESSION_DURATION_MS);
+
+  try {
+    const parsed = JSON.parse(fromBase64Url(payload).toString("utf8"));
+    if (parsed.expiresAt) {
+      expires = new Date(parsed.expiresAt);
+    }
+  } catch (e) {}
+
   return {
     name: SESSION_COOKIE_NAME,
     value,
@@ -658,7 +668,7 @@ export function sessionCookieConfig(value: string, secure: boolean) {
     sameSite: "lax" as const,
     secure,
     path: "/",
-    expires: new Date(Date.parse(JSON.parse(fromBase64Url(value.split(".")[0]).toString("utf8")).expiresAt)),
+    expires: isNaN(expires.getTime()) ? new Date(Date.now() + SESSION_DURATION_MS) : expires,
   };
 }
 
