@@ -445,7 +445,7 @@ export async function updateUserProfile(userId: string, updates: { name: string;
 
       if (error) {
         console.error("Supabase profile update error:", error);
-        throw new Error("Database update failed.");
+        throw new Error(`Database error: ${error.message}${error.hint ? ' - ' + error.hint : ''}`);
       }
 
       if (!data) {
