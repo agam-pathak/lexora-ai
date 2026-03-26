@@ -292,7 +292,8 @@ async function backfillUserToSupabase(user: StoredUser) {
     .single();
 
   if (error) {
-    throw error;
+    console.warn("Supabase backfill failed:", error);
+    return user; // Return the user anyway to prevent crashing the whole flow if only sync fails
   }
 
   return fromStoredUserRow(data as StoredUserRow);
@@ -445,17 +446,23 @@ export async function updateUserProfile(userId: string, updates: { name: string 
         throw error;
       }
 
-      // Update fallback JSON just in case they are mirrored
-      const store = await readUsersStoreFromFile();
-      const userIndex = store.users.findIndex((u) => u.id === userId);
-      if (userIndex >= 0) {
-        const nextUsers = [...store.users];
-        nextUsers[userIndex] = {
-          ...nextUsers[userIndex],
-          name: normalizedName,
-          updatedAt: new Date().toISOString(),
-        };
-        await writeUsersStoreToFile(nextUsers);
+      // Sync to local JSON ONLY if we're not in production (Vercel is read-only)
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          const store = await readUsersStoreFromFile();
+          const userIndex = store.users.findIndex((u) => u.id === userId);
+          if (userIndex >= 0) {
+            const nextUsers = [...store.users];
+            nextUsers[userIndex] = {
+              ...nextUsers[userIndex],
+              name: normalizedName,
+              updatedAt: new Date().toISOString(),
+            };
+            await writeUsersStoreToFile(nextUsers);
+          }
+        } catch (e) {
+          console.warn("Local JSON mirror sync failed (ignoring):", e);
+        }
       }
 
       return fromStoredUserRow(data as StoredUserRow);
