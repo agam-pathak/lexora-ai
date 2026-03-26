@@ -28,9 +28,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const fileUrl = searchParams.get("path")?.trim();
 
-    if (!fileUrl) {
+    if (!fileUrl || fileUrl === "null" || fileUrl === "undefined") {
       return NextResponse.json(
-        { error: "A file path is required." },
+        { error: "A valid file path is required. Received: " + String(fileUrl) },
         { status: 400 },
       );
     }

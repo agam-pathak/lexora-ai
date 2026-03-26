@@ -136,6 +136,15 @@ function ChatWorkspace() {
 
     const targetDocument = selectedDocument;
 
+    // Additional safety checks before attempting repair
+    if (
+      !targetDocument.fileUrl || // Ensure fileUrl exists
+      targetDocument.extractionMode !== "ocr-recommended" || // Only repair if extractionMode is 'ocr-recommended'
+      repairingDocumentId === targetDocument.id // Prevent re-repairing if already in progress
+    ) {
+      return;
+    }
+
     repairedDocumentsRef.current.add(targetDocument.id);
     let cancelled = false;
 

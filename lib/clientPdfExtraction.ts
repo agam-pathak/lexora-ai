@@ -12,14 +12,14 @@ async function getPdfJs() {
     throw new Error("PDF extraction is only supported on the client side.");
   }
   const { pdfjs } = await import("react-pdf");
-  
+
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
       "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
       import.meta.url,
     ).toString();
   }
-  
+
   return pdfjs;
 }
 
@@ -31,9 +31,9 @@ function isPdfJsTextItem(
 } {
   return Boolean(
     value &&
-      typeof value === "object" &&
-      "str" in value &&
-      typeof value.str === "string",
+    typeof value === "object" &&
+    "str" in value &&
+    typeof value.str === "string",
   );
 }
 

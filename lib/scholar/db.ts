@@ -355,9 +355,14 @@ export async function submitAnswer(params: {
 
   const log = existingLog as QuestionLogRow;
   const isSkipped = params.userAnswer === null || params.userAnswer === "";
+  
+  // Robust correctness check: split by comma, trim, sort, join
+  const normalize = (val: string | null) => 
+    (val || "").split(",").map(v => v.trim()).filter(Boolean).sort().join(",");
+
   const isCorrect = isSkipped
     ? null
-    : params.userAnswer === log.correct_answer;
+    : normalize(params.userAnswer) === normalize(log.correct_answer);
 
   // Look up marking scheme from exam category
   const examCategory = log.exam_category;

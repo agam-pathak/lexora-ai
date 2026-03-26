@@ -96,17 +96,33 @@ export default function QuizRenderer({
     (key: string) => {
       if (currentAnswer?.submitted) return;
 
-      setAnswers((prev) => ({
-        ...prev,
-        [currentQuestion.questionNumber]: {
-          selected: key,
-          submitted: false,
-          isCorrect: null,
-          timeSpent: questionTimer,
-        },
-      }));
+      const isMulti = currentQuestion.questionType === "multi_correct";
+
+      setAnswers((prev) => {
+        const currentSelected = prev[currentQuestion.questionNumber]?.selected || "";
+        let nextSelected = key;
+
+        if (isMulti) {
+          const selectedKeys = currentSelected ? currentSelected.split(",") : [];
+          if (selectedKeys.includes(key)) {
+            nextSelected = selectedKeys.filter((k) => k !== key).sort().join(",");
+          } else {
+            nextSelected = [...selectedKeys, key].sort().join(",");
+          }
+        }
+
+        return {
+          ...prev,
+          [currentQuestion.questionNumber]: {
+            selected: nextSelected,
+            submitted: false,
+            isCorrect: null,
+            timeSpent: questionTimer,
+          },
+        };
+      });
     },
-    [currentAnswer?.submitted, currentQuestion.questionNumber, questionTimer],
+    [currentAnswer?.submitted, currentQuestion.questionNumber, currentQuestion.questionType, questionTimer],
   );
 
   const handleSubmitAnswer = useCallback(
@@ -380,10 +396,11 @@ export default function QuizRenderer({
             <div className="flex flex-col gap-2.5">
               {currentQuestion.options.map((option) => {
                 const key = option.key;
-                const isSelected = currentAnswer?.selected === key;
+                const selectedKeys = currentAnswer?.selected ? currentAnswer.selected.split(",") : [];
+                const isSelected = selectedKeys.includes(key);
                 const isSubmitted = currentAnswer?.submitted;
-                const isCorrectAnswer =
-                  currentQuestion.correctAnswer.includes(key);
+                const correctKeys = currentQuestion.correctAnswer.split(",");
+                const isCorrectAnswer = correctKeys.includes(key);
                 const wasWrongSelection =
                   isSubmitted && isSelected && !isCorrectAnswer;
 
