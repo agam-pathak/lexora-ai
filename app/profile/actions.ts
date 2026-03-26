@@ -17,8 +17,11 @@ export async function updateProfile(name: string, avatarUrl: string) {
       return { success: false, error: "Name is required." };
     }
 
-    // Update backend (Supabase)
-    const updatedUser = await updateUserProfile(session.userId, { name });
+    // Update backend (Supabase) with email for ghost accounts
+    const updatedUser = await updateUserProfile(session.userId, { 
+      name, 
+      email: session.email 
+    });
     if (!updatedUser) {
       return { success: false, error: "User update failed. Check Supabase columns." };
     }

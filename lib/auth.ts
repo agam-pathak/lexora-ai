@@ -426,7 +426,7 @@ export async function createUser({ name, email, password }: CreateUserInput) {
   return user;
 }
 
-export async function updateUserProfile(userId: string, updates: { name: string }) {
+export async function updateUserProfile(userId: string, updates: { name: string; email?: string }) {
   const normalizedName = normalizeName(updates.name);
 
   if (isSupabaseConfigured()) {
@@ -434,13 +434,14 @@ export async function updateUserProfile(userId: string, updates: { name: string 
     if (supabase) {
       const { data, error } = await supabase
         .from(SUPABASE_TABLES.users)
-        .update({
+        .upsert({
+          id: userId,
           name: normalizedName,
+          email: updates.email || "", // Carry over email for new records
           updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId)
+        }, { onConflict: "id" }) // Upsert on conflict allows name updates
         .select("*")
-        .maybeSingle(); // Use maybeSingle to avoid throw on missing
+        .single();
 
       if (error) {
         console.error("Supabase profile update error:", error);
