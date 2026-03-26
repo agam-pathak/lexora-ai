@@ -312,7 +312,7 @@ export default function UploadPage() {
     }
   }
 
-  async function reindexIndexedDocument(documentId: string) {
+  async function reindexIndexedDocument(documentId: string, forceOcr = false) {
     const document = documents.find((entry) => entry.id === documentId);
 
     if (!document) {
@@ -325,13 +325,17 @@ export default function UploadPage() {
     try {
       let parsedPdf = null;
 
-      try {
-        parsedPdf = await extractPdfDocumentFromUrl(
-          `/api/files/serve?path=${encodeURIComponent(document.fileUrl)}`,
-        );
-      } catch (error) {
-        console.warn("Local PDF extraction failed before reindex.", error);
+      // Skip local extraction and let the server do full OCR if forcing
+      if (!forceOcr) {
+        try {
+          parsedPdf = await extractPdfDocumentFromUrl(
+            `/api/files/serve?path=${encodeURIComponent(document.fileUrl)}`,
+          );
+        } catch (error) {
+          console.warn("Local PDF extraction failed before reindex.", error);
+        }
       }
+      
       const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
 
       const response = await fetch("/api/index", {
@@ -342,6 +346,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           documentId,
           parsedPdf: inlineParsedPdf,
+          forceOcr,
         }),
       });
       const data = await response.json();
@@ -440,12 +445,17 @@ export default function UploadPage() {
                                <span>{formatBytes(doc.sizeBytes)}</span>
                                <span className="opacity-30">|</span>
                                <span>Indexed {formatIndexedAt(doc.indexedAt)}</span>
-                               {doc.chunkCount === 0 ? (
+                               {doc.extractionMode === "ocr-recommended" || doc.chunkCount === 0 ? (
                                  <>
                                    <span className="opacity-30">|</span>
-                                   <span className="flex items-center gap-1.5 text-amber-400">
-                                     <TriangleAlert className="h-3 w-3" /> OCR Needed
-                                   </span>
+                                   <button 
+                                     onClick={(e) => { e.stopPropagation(); reindexIndexedDocument(doc.id, true); }}
+                                     disabled={reindexingDocumentId === doc.id}
+                                     className="flex items-center gap-1.5 text-amber-400 hover:text-amber-200 transition-colors"
+                                   >
+                                     <Sparkles className="h-3 w-3" /> 
+                                     {reindexingDocumentId === doc.id ? "Deep Scanning..." : "Deep Scan (OCR)"}
+                                   </button>
                                  </>
                                ) : doc.extractionMode === "ocr" ? (
                                  <>

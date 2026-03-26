@@ -30,6 +30,7 @@ export async function POST(request: Request) {
           ({
             documentId: undefined as string | undefined,
             parsedPdf: undefined as unknown,
+            forceOcr: false,
           }),
       );
     const parsedPdf = coerceParsedPdfDocument(body.parsedPdf);
@@ -39,7 +40,9 @@ export async function POST(request: Request) {
         session.userId,
         body.documentId.trim(),
         parsedPdf,
+        body.forceOcr === true
       );
+      
       const extractionLimited =
         document.chunkCount === 0 &&
         document.extractionMode === "ocr-recommended";

@@ -100,13 +100,8 @@ export default function PDFViewer({
   const [savingNotes, setSavingNotes] = useState(false);
 
   useEffect(() => {
-    // Only set worker on the client
-    if (typeof window !== "undefined") {
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-        import.meta.url,
-      ).toString();
-    }
+    // Standard CDN worker for production reliability on Vercel
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
   }, []);
   const fileUrl = document?.fileUrl ?? null;
   const bookmarkedPages = useMemo(

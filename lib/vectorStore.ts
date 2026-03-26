@@ -109,6 +109,7 @@ type IndexDocumentInput = {
   fileUrl: string;
   sizeBytes: number;
   parsedPdf?: ParsedPdfDocument | null;
+  forceOcr?: boolean;
 };
 
 const LEGACY_UPLOADS_ROOT = LEGACY_PUBLIC_UPLOADS_ROOT;
@@ -776,13 +777,15 @@ export async function indexDocument(input: IndexDocumentInput) {
 
   let parsedPdf = input.parsedPdf ?? null;
 
-  if (!parsedPdf) {
+  // If provided text is suspiciously low, force a server-side re-parse with OCR fallback
+  const charThreshold = (parsedPdf?.pageCount || 1) * 70;
+  if (!parsedPdf || parsedPdf.text.length < charThreshold || input.forceOcr) {
     try {
       const { parsePdfFile } = await import("@/lib/pdfParser");
       parsedPdf = await parsePdfFile(filePath);
     } catch (error) {
       console.error("PDF Parsing Failure:", error);
-      parsedPdf = {
+      parsedPdf = parsedPdf || {
         text: "",
         pageCount: 1,
         pages: [],
@@ -1004,6 +1007,7 @@ export async function reindexDocument(
   userId: string,
   documentId: string,
   parsedPdf?: ParsedPdfDocument | null,
+  forceOcr?: boolean,
 ) {
   const document = await getDocument(userId, documentId);
 
@@ -1019,6 +1023,7 @@ export async function reindexDocument(
     fileUrl: document.fileUrl,
     sizeBytes: document.sizeBytes,
     parsedPdf,
+    forceOcr,
   });
 }
 

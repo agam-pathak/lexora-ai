@@ -5,7 +5,10 @@ import path from "node:path";
 import { LEXORA_ROOT } from "@/lib/storage";
 import type { ParsedPdfPage } from "@/lib/types";
 
-const OCR_CACHE_ROOT = path.join(LEXORA_ROOT, "ocr-cache");
+const IS_PROD = process.env.NODE_ENV === "production";
+const OCR_CACHE_ROOT = IS_PROD 
+  ? path.join("/tmp", "lexora", "ocr-cache")
+  : path.join(LEXORA_ROOT, "ocr-cache");
 const OCR_MAX_RENDER_EDGE = 2200;
 const OCR_MIN_SCALE = 1.35;
 const OCR_MAX_SCALE = 2.2;
