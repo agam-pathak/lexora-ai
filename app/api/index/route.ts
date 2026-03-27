@@ -12,6 +12,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+function readFormBoolean(value: FormDataEntryValue | null) {
+  return value === "true" || value === "1";
+}
+
+async function readParsedPdfFormValue(formData: FormData) {
+  const parsedPdfFile = formData.get("parsedPdfFile");
+
+  if (parsedPdfFile instanceof File) {
+    return coerceParsedPdfDocument(await parsedPdfFile.text());
+  }
+
+  return coerceParsedPdfDocument(formData.get("parsedPdf"));
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -23,17 +37,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request
-      .json()
-      .catch(
-        () =>
-          ({
-            documentId: undefined as string | undefined,
-            parsedPdf: undefined as unknown,
-            forceOcr: false,
-          }),
-      );
-    const parsedPdf = coerceParsedPdfDocument(body.parsedPdf);
+    const contentType = request.headers.get("content-type") ?? "";
+    const body = contentType.includes("multipart/form-data")
+      ? await (async () => {
+          const formData = await request.formData();
+
+          return {
+            documentId:
+              typeof formData.get("documentId") === "string"
+                ? (formData.get("documentId") as string)
+                : undefined,
+            parsedPdf: await readParsedPdfFormValue(formData),
+            forceOcr: readFormBoolean(formData.get("forceOcr")),
+          };
+        })()
+      : await request
+          .json()
+          .catch(
+            () =>
+              ({
+                documentId: undefined as string | undefined,
+                parsedPdf: undefined as unknown,
+                forceOcr: false,
+              }),
+          );
+    const parsedPdf =
+      "parsedPdf" in body && body.parsedPdf && typeof body.parsedPdf === "object"
+        ? body.parsedPdf
+        : coerceParsedPdfDocument(body.parsedPdf);
 
     if (typeof body.documentId === "string" && body.documentId.trim()) {
       const document = await reindexDocument(

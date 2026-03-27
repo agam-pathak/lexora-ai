@@ -12,6 +12,7 @@ type ChatComposerProps = {
   searchMode: SearchMode;
   selectedDocument: IndexedDocument | null;
   canAskQuestion: boolean;
+  blockedReason?: string;
   loading: boolean;
   conversationError: string;
   onQuestionChange: (value: string) => void;
@@ -27,6 +28,7 @@ export default function ChatComposer({
   searchMode,
   selectedDocument,
   canAskQuestion,
+  blockedReason = "",
   loading,
   conversationError,
   onQuestionChange,
@@ -64,7 +66,9 @@ export default function ChatComposer({
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={onKeyDown}
           placeholder={
-            searchMode === "all"
+            blockedReason
+              ? blockedReason
+              : searchMode === "all"
               ? "Ask Lexora AI across your indexed documents..."
               : selectedDocument
                 ? `Ask Lexora AI about this document...`
@@ -95,6 +99,8 @@ export default function ChatComposer({
 
       {conversationError ? (
         <p className="mt-2 text-xs text-rose-400">{conversationError}</p>
+      ) : blockedReason ? (
+        <p className="mt-2 text-xs text-cyan-300/80">{blockedReason}</p>
       ) : null}
     </div>
   );

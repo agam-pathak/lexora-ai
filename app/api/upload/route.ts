@@ -52,6 +52,16 @@ function createIndexedDocumentResponse(document: Awaited<ReturnType<typeof index
   };
 }
 
+async function readParsedPdfFormValue(formData: FormData) {
+  const parsedPdfFile = formData.get("parsedPdfFile");
+
+  if (parsedPdfFile instanceof File) {
+    return coerceParsedPdfDocument(await parsedPdfFile.text());
+  }
+
+  return coerceParsedPdfDocument(formData.get("parsedPdf"));
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -116,7 +126,7 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const uploadedFile = formData.get("file");
-    const parsedPdf = coerceParsedPdfDocument(formData.get("parsedPdf"));
+    const parsedPdf = await readParsedPdfFormValue(formData);
 
     if (!(uploadedFile instanceof File)) {
       return NextResponse.json(

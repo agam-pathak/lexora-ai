@@ -28,6 +28,7 @@ type SearchMode = "document" | "all";
 type ChatBoxProps = {
   documents: IndexedDocument[];
   selectedDocumentId: string;
+  documentRepairing: boolean;
   onDocumentChange: (documentId: string) => void;
   onSourceSelect?: (source: ChatSource) => void;
 };
@@ -36,12 +37,22 @@ function createAssistantIntro(
   document: IndexedDocument | null,
   searchMode: SearchMode,
   documentCount: number,
+  documentRepairing: boolean,
 ): ConversationMessage {
   if (documentCount === 0) {
     return {
       id: "assistant-intro",
       role: "assistant",
       text: "Upload a PDF to start a grounded conversation.",
+      createdAt: new Date(0).toISOString(),
+    };
+  }
+
+  if (searchMode === "document" && documentRepairing && document) {
+    return {
+      id: "assistant-intro",
+      role: "assistant",
+      text: `"${document.name}" is still rebuilding searchable text. Wait for the rebuild banner to finish before asking grounded questions.`,
       createdAt: new Date(0).toISOString(),
     };
   }
@@ -137,6 +148,7 @@ function toMarkdownTranscript(
 export default function ChatBox({
   documents,
   selectedDocumentId,
+  documentRepairing,
   onDocumentChange,
   onSourceSelect,
 }: ChatBoxProps) {
@@ -165,7 +177,9 @@ export default function ChatBox({
       ? ALL_DOCUMENTS_SCOPE_ID
       : (selectedDocument?.id ?? "");
   const canAskQuestion =
-    searchMode === "all" ? documents.length > 0 : selectedDocument !== null;
+    searchMode === "all"
+      ? documents.length > 0
+      : selectedDocument !== null && !documentRepairing;
   const promptChips = useMemo(
     () => createPromptChips(selectedDocument, searchMode, documents.length),
     [documents.length, searchMode, selectedDocument],
@@ -179,9 +193,10 @@ export default function ChatBox({
               selectedDocument,
               searchMode,
               documents.length,
+              documentRepairing,
             ),
           ],
-    [documents.length, messages, searchMode, selectedDocument],
+    [documentRepairing, documents.length, messages, searchMode, selectedDocument],
   );
   const activeConversation =
     conversationSummaries.find(
@@ -885,6 +900,11 @@ export default function ChatBox({
         searchMode={searchMode}
         selectedDocument={selectedDocument}
         canAskQuestion={canAskQuestion}
+        blockedReason={
+          searchMode === "document" && documentRepairing
+            ? "Searchable text is still rebuilding for this document."
+            : ""
+        }
         loading={loading}
         conversationError={conversationError}
         onQuestionChange={setQuestion}

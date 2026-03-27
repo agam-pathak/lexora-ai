@@ -23,11 +23,14 @@ import {
   extractPdfDocumentFromFile,
   extractPdfDocumentFromUrl,
 } from "@/lib/clientPdfExtraction";
-import type { IndexedDocument, ParsedPdfDocument } from "@/lib/types";
+import {
+  getInlineParsedPdf,
+  requestDocumentReindex,
+} from "@/lib/clientIndexing";
+import type { IndexedDocument } from "@/lib/types";
 import { useToast } from "@/components/ui/Toast";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const MAX_INLINE_PARSED_PDF_BYTES = 1.5 * 1024 * 1024;
 type UploadStage =
   | "idle"
   | "analyzing"
@@ -35,22 +38,6 @@ type UploadStage =
   | "indexing"
   | "ready"
   | "error";
-
-function getInlineParsedPdf(
-  parsedPdf: ParsedPdfDocument | null,
-) {
-  if (!parsedPdf) {
-    return null;
-  }
-
-  const serialized = JSON.stringify(parsedPdf);
-
-  if (new Blob([serialized]).size > MAX_INLINE_PARSED_PDF_BYTES) {
-    return null;
-  }
-
-  return parsedPdf;
-}
 
 function uploadFileToSignedUrl(
   signedUrl: string,
@@ -222,6 +209,24 @@ export default function UploadPage() {
         }
 
         data = finalizeData;
+
+        if (
+          parsedPdf &&
+          !inlineParsedPdf &&
+          finalizeData.document?.id &&
+          finalizeData.document.chunkCount === 0
+        ) {
+          const repaired = await requestDocumentReindex({
+            documentId: finalizeData.document.id,
+            parsedPdf,
+          });
+
+          data = {
+            ...data,
+            message: repaired.message || data.message,
+            document: repaired.document,
+          };
+        }
       } catch (directUploadError) {
         console.warn("Direct storage upload failed, falling back to function upload.", directUploadError);
 
@@ -229,6 +234,12 @@ export default function UploadPage() {
         formData.append("file", selectedFile);
         if (inlineParsedPdf) {
           formData.append("parsedPdf", JSON.stringify(inlineParsedPdf));
+        } else if (parsedPdf) {
+          formData.append(
+            "parsedPdfFile",
+            new Blob([JSON.stringify(parsedPdf)], { type: "application/json" }),
+            "parsed-pdf.json",
+          );
         }
 
         data = await new Promise<{ message?: string; document: IndexedDocument }>((resolve, reject) => {
@@ -335,24 +346,11 @@ export default function UploadPage() {
         }
       }
       
-      const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
-
-      const response = await fetch("/api/index", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          documentId,
-          parsedPdf: inlineParsedPdf,
-          forceOcr,
-        }),
+      const data = await requestDocumentReindex({
+        documentId,
+        parsedPdf,
+        forceOcr,
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Reindex failed.");
-      }
 
       setStatusMessage(data.message || "Document reindexed successfully.");
       addToast(data.message || "Document reindexed successfully.", "success");

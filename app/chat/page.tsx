@@ -18,24 +18,16 @@ import {
 } from "react";
 
 import ChatBox from "@/components/ChatBox";
+import { requestDocumentReindex } from "@/lib/clientIndexing";
 import { extractPdfDocumentFromUrl } from "@/lib/clientPdfExtraction";
 import type {
   ChatSource,
   IndexedDocument,
-  ParsedPdfDocument,
 } from "@/lib/types";
 
 const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
 });
-const MAX_INLINE_PARSED_PDF_BYTES = 1.5 * 1024 * 1024;
-
-function getInlineParsedPdf(parsedPdf: ParsedPdfDocument) {
-  return new Blob([JSON.stringify(parsedPdf)]).size <=
-    MAX_INLINE_PARSED_PDF_BYTES
-    ? parsedPdf
-    : null;
-}
 
 function ChatWorkspace() {
   const searchParams = useSearchParams();
@@ -159,28 +151,19 @@ function ChatWorkspace() {
         if (parsedPdf.pages.length === 0) {
           return;
         }
-        const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
-
-        const response = await fetch("/api/index", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            documentId: targetDocument.id,
-            parsedPdf: inlineParsedPdf,
-          }),
+        const { document: updatedDocument } = await requestDocumentReindex({
+          documentId: targetDocument.id,
+          parsedPdf,
         });
-        const data = await response.json();
 
-        if (!response.ok || !data.document || cancelled) {
+        if (cancelled) {
           return;
         }
 
         startTransition(() => {
           setDocuments((currentDocuments) =>
             currentDocuments.map((document) =>
-              document.id === data.document.id ? data.document : document,
+              document.id === updatedDocument.id ? updatedDocument : document,
             ),
           );
         });
@@ -301,6 +284,7 @@ function ChatWorkspace() {
         <ChatBox
           documents={documents}
           selectedDocumentId={selectedDocumentId}
+          documentRepairing={repairingDocumentId === selectedDocument?.id}
           onDocumentChange={(documentId) => {
             setSelectedDocumentId(documentId);
             setViewerPageNumber(1);
