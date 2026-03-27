@@ -489,7 +489,7 @@ export async function updateUserProfile(userId: string, updates: { name: string;
             nextUsers[userIdx] = { ...nextUsers[userIdx], name: normalizedName, updatedAt: new Date().toISOString() };
             await writeUsersStoreToFile(nextUsers);
           }
-        } catch (e) {}
+        } catch {}
       }
 
       return fromStoredUserRow(data as StoredUserRow);
@@ -687,7 +687,7 @@ export function sessionCookieConfig(value: string, secure: boolean) {
     if (parsed.expiresAt) {
       expires = new Date(parsed.expiresAt);
     }
-  } catch (e) {}
+  } catch {}
 
   return {
     name: SESSION_COOKIE_NAME,

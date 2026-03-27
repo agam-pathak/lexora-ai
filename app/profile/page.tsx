@@ -35,13 +35,6 @@ export default async function ProfilePage() {
     getUserSessions(session.userId)
   ]);
 
-  const initials = (session.name || "User")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("") || "??";
-
   const joinDate = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }); // Mocking since users table isn't directly exposed here, but sufficient for UI.
 
   const docCount = documents.length;

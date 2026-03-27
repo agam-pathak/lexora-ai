@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileUp,
   GraduationCap,
@@ -16,7 +16,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect } from "react";
 import CommandPalette from "./CommandPalette";
 
 import type { AuthSession } from "@/lib/types";
@@ -71,18 +70,6 @@ export default function AppShell({
       setSigningOut(false);
     }
   }
-
-  const profile = session
-    ? {
-        initials: session.name
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((s) => s[0]?.toUpperCase() ?? "")
-          .join(""),
-        label: session.name,
-      }
-    : null;
 
   return (
     <div className={`flex flex-col h-screen overflow-hidden bg-slate-950 font-sans transition-colors duration-500`}>

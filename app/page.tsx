@@ -1,11 +1,8 @@
 import {
-  Activity,
   ArrowRight,
-  Database,
   ShieldCheck,
   Sparkles,
   TrendingUp,
-  Zap,
   CheckCircle2,
   GraduationCap,
   BrainCircuit,

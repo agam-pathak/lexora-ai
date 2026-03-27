@@ -200,7 +200,7 @@ function ChatWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDocument]);
+  }, [repairingDocumentId, selectedDocument]);
 
   if (!loadingDocuments && documents.length === 0) {
     return (

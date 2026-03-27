@@ -43,7 +43,7 @@ export default function EditProfileModal({
       } else {
         alert(result.error);
       }
-    } catch (err) {
+    } catch {
       alert("A technical error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);

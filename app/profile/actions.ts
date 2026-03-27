@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
 import {
@@ -52,11 +51,11 @@ export async function updateProfile(name: string, avatarUrl: string) {
     // We do NOT call revalidatePath(root) here as it can crash some Vercel builds
     // Return success and let the client handle the refresh
     return { success: true };
-  } catch (err: any) {
-    console.error("Profile Action Error:", err);
+  } catch (error: unknown) {
+    console.error("Profile Action Error:", error);
     return { 
       success: false, 
-      error: err instanceof Error ? err.message : "Internal Server Error" 
+      error: error instanceof Error ? error.message : "Internal Server Error" 
     };
   }
 }

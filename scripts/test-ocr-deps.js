@@ -1,31 +1,38 @@
-const { createRequire } = require('node:module');
-const path = require('node:path');
-
 const CANVAS_MODULE_NAME = ["@napi-rs", "canvas"].join("/");
 
-function loadCanvasModule() {
-  const requireFunc = createRequire(__filename);
+async function loadCanvasModule() {
   try {
+    const { createRequire } = await import("node:module");
+    const requireFunc = createRequire(__filename);
     const canvas = requireFunc(CANVAS_MODULE_NAME);
     console.log("Canvas module loaded successfully");
     const c = canvas.createCanvas(100, 100);
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#ffffff';
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, 100, 100);
     console.log("Canvas operation successful");
-  } catch (e) {
-    console.error("Canvas module load failed:", e.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Canvas module load failed:", message);
   }
 }
 
 async function loadTesseract() {
   try {
-    const { createWorker } = await import('tesseract.js');
+    const tesseract = await import("tesseract.js");
+    if (typeof tesseract.createWorker === "function") {
+      console.log("Tesseract worker factory available");
+    }
     console.log("Tesseract module loaded successfully");
-  } catch (e) {
-    console.error("Tesseract module load failed:", e.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Tesseract module load failed:", message);
   }
 }
 
-loadCanvasModule();
-loadTesseract();
+async function main() {
+  await loadCanvasModule();
+  await loadTesseract();
+}
+
+void main();

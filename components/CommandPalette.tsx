@@ -1,20 +1,25 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { 
   Search, 
   FileText, 
   MessageSquare, 
-  Settings, 
   User, 
   FileUp, 
   GraduationCap, 
   Command,
-  X,
   History,
   Zap,
-  ArrowRight
+  ArrowRight,
+  type LucideIcon,
 } from "lucide-react";
 
 import type { IndexedDocument, ConversationSummary } from "@/lib/types";
@@ -30,9 +35,41 @@ type SearchResult = {
   title: string;
   type: "document" | "thread" | "page" | "action";
   href: string;
-  icon: any;
+  icon: LucideIcon;
   meta?: string;
 };
+
+const STATIC_ITEMS: SearchResult[] = [
+  { id: "nav-home", title: "Go to Home", type: "page", href: "/", icon: Zap },
+  {
+    id: "nav-upload",
+    title: "Library / Upload",
+    type: "page",
+    href: "/upload",
+    icon: FileUp,
+  },
+  {
+    id: "nav-chat",
+    title: "AI Workspace",
+    type: "page",
+    href: "/chat",
+    icon: MessageSquare,
+  },
+  {
+    id: "nav-scholar",
+    title: "Lexora Scholar",
+    type: "page",
+    href: "/scholar",
+    icon: GraduationCap,
+  },
+  {
+    id: "nav-profile",
+    title: "My Profile",
+    type: "page",
+    href: "/profile",
+    icon: User,
+  },
+];
 
 export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const router = useRouter();
@@ -42,39 +79,63 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Fetch documents and threads once
-  useEffect(() => {
-    if (!isOpen) return;
-    
+  const refreshPaletteData = useEffectEvent(async () => {
     setLoading(true);
-    Promise.all([
-      fetch("/api/files").then(r => r.json()),
-      fetch("/api/conversations").then(r => r.json())
-    ]).then(([fileData, threadData]) => {
+    try {
+      const [fileResponse, threadResponse] = await Promise.all([
+        fetch("/api/files"),
+        fetch("/api/conversations"),
+      ]);
+      const [fileData, threadData] = await Promise.all([
+        fileResponse.json(),
+        threadResponse.json(),
+      ]);
+
+      if (!fileResponse.ok) {
+        throw new Error(fileData.error || "Failed to load files.");
+      }
+
+      if (!threadResponse.ok) {
+        throw new Error(threadData.error || "Failed to load conversations.");
+      }
+
       setDocuments(fileData.files || []);
       setThreads(threadData.summaries || []);
-    }).catch(err => {
-      console.error("Failed to fetch command palette data", err);
-    }).finally(() => {
+    } catch (error) {
+      console.error("Failed to fetch command palette data", error);
+    } finally {
       setLoading(false);
-    });
+    }
+  });
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    void refreshPaletteData();
   }, [isOpen]);
 
-  // Static navigation items
-  const staticItems: SearchResult[] = [
-    { id: "nav-home", title: "Go to Home", type: "page", href: "/", icon: Zap },
-    { id: "nav-upload", title: "Library / Upload", type: "page", href: "/upload", icon: FileUp },
-    { id: "nav-chat", title: "AI Workspace", type: "page", href: "/chat", icon: MessageSquare },
-    { id: "nav-scholar", title: "Lexora Scholar", type: "page", href: "/scholar", icon: GraduationCap },
-    { id: "nav-profile", title: "My Profile", type: "page", href: "/profile", icon: User },
-  ];
+  const handleClose = useCallback(() => {
+    setQuery("");
+    setActiveIndex(0);
+    onClose();
+  }, [onClose]);
+
+  const handleQueryChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      setQuery(event.target.value);
+      setActiveIndex(0);
+    },
+    [],
+  );
 
   const filteredResults = useMemo(() => {
     const results: SearchResult[] = [];
     const lowerQuery = query.toLowerCase().trim();
 
     // 1. Match Pages
-    staticItems.forEach(item => {
+    STATIC_ITEMS.forEach(item => {
       if (item.title.toLowerCase().includes(lowerQuery)) {
         results.push(item);
       }
@@ -111,17 +172,21 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     return results;
   }, [query, documents, threads]);
 
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query]);
-
   const handleSelect = useCallback((item: SearchResult) => {
-    onClose();
+    handleClose();
     router.push(item.href);
-    setQuery("");
-  }, [onClose, router]);
+  }, [handleClose, router]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      handleClose();
+      return;
+    }
+
+    if (filteredResults.length === 0) {
+      return;
+    }
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActiveIndex(prev => (prev + 1) % filteredResults.length);
@@ -130,15 +195,13 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       setActiveIndex(prev => (prev - 1 + filteredResults.length) % filteredResults.length);
     } else if (e.key === "Enter" && filteredResults[activeIndex]) {
       handleSelect(filteredResults[activeIndex]);
-    } else if (e.key === "Escape") {
-      onClose();
     }
-  }, [filteredResults, activeIndex, handleSelect, onClose]);
+  }, [activeIndex, filteredResults, handleClose, handleSelect]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4 backdrop-blur-md bg-slate-950/60 animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4 backdrop-blur-md bg-slate-950/60 animate-in fade-in duration-200" onClick={handleClose}>
       <div 
         className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/[0.08] bg-[#0c101d] shadow-[0_32px_128px_rgba(0,0,0,0.8)] ring-1 ring-white/5 animate-[slideUp_0.3s_cubic-bezier(0.16,1,0.3,1)]"
         onClick={e => e.stopPropagation()}
@@ -149,7 +212,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           <input
             autoFocus
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={handleQueryChange}
             placeholder="Search documents, threads, and navigations..."
             className="flex-1 bg-transparent text-lg text-white outline-none placeholder:text-slate-600"
           />
