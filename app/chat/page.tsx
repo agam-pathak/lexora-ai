@@ -45,6 +45,7 @@ function ChatWorkspace() {
   const [localTextDocumentIds, setLocalTextDocumentIds] = useState<string[]>([]);
   const selectedDocumentIdRef = useRef(selectedDocumentId);
   const syncedDocumentsRef = useRef(new Set<string>());
+  const preparingPromisesRef = useRef(new Map<string, Promise<boolean>>());
 
   const markLocalTextReady = useCallback(
     (documentId: string, parsedPdf: ParsedPdfDocument) => {
@@ -59,6 +60,104 @@ function ChatWorkspace() {
   useEffect(() => {
     selectedDocumentIdRef.current = selectedDocumentId;
   }, [selectedDocumentId]);
+
+  const syncDocumentInBackground = useCallback(
+    async (targetDocument: IndexedDocument, parsedPdf: ParsedPdfDocument) => {
+      if (
+        syncedDocumentsRef.current.has(targetDocument.id) ||
+        !(
+          targetDocument.chunkCount === 0 ||
+          targetDocument.extractionMode === "ocr-recommended"
+        )
+      ) {
+        return;
+      }
+
+      syncedDocumentsRef.current.add(targetDocument.id);
+
+      let timeoutId: number | undefined;
+
+      try {
+        const { document: updatedDocument } = await Promise.race([
+          requestDocumentReindex({
+            documentId: targetDocument.id,
+            parsedPdf,
+          }),
+          new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error("Background sync timed out."));
+            }, BACKGROUND_SYNC_TIMEOUT_MS);
+          }),
+        ]);
+
+        setDocuments((currentDocuments) =>
+          currentDocuments.map((document) =>
+            document.id === updatedDocument.id ? updatedDocument : document,
+          ),
+        );
+      } catch {
+        // Live chat can still run from cached text even if the sync fails.
+      } finally {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      }
+    },
+    [],
+  );
+
+  const prepareDocumentLiveText = useCallback(
+    async (targetDocument: IndexedDocument) => {
+      if (!targetDocument.id) {
+        return false;
+      }
+
+      if (hasCachedParsedPdfDocument(targetDocument.id)) {
+        setLocalTextDocumentIds((currentIds) =>
+          currentIds.includes(targetDocument.id)
+            ? currentIds
+            : [...currentIds, targetDocument.id],
+        );
+        return true;
+      }
+
+      const existingPreparation =
+        preparingPromisesRef.current.get(targetDocument.id);
+
+      if (existingPreparation) {
+        return existingPreparation;
+      }
+
+      const nextPreparation = (async () => {
+        setPreparingDocumentId(targetDocument.id);
+
+        try {
+          const parsedPdf = await extractPdfDocumentFromUrl(
+            `/api/files/serve?path=${encodeURIComponent(targetDocument.fileUrl)}`,
+          );
+
+          if (parsedPdf.pages.length === 0) {
+            return false;
+          }
+
+          markLocalTextReady(targetDocument.id, parsedPdf);
+          void syncDocumentInBackground(targetDocument, parsedPdf);
+          return true;
+        } catch {
+          return false;
+        } finally {
+          preparingPromisesRef.current.delete(targetDocument.id);
+          setPreparingDocumentId((currentId) =>
+            currentId === targetDocument.id ? "" : currentId,
+          );
+        }
+      })();
+
+      preparingPromisesRef.current.set(targetDocument.id, nextPreparation);
+      return nextPreparation;
+    },
+    [markLocalTextReady, syncDocumentInBackground],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -143,81 +242,22 @@ function ChatWorkspace() {
   }, [selectedDocumentKey]);
 
   useEffect(() => {
-    if (!selectedDocument || localTextReady || preparingDocument) {
+    if (!selectedDocument || localTextReady) {
       return;
     }
 
-    const targetDocument = selectedDocument;
     let cancelled = false;
 
-    async function prepareDocument() {
-      setPreparingDocumentId(targetDocument.id);
-
-      try {
-        const parsedPdf = await extractPdfDocumentFromUrl(
-          `/api/files/serve?path=${encodeURIComponent(targetDocument.fileUrl)}`,
-        );
-
-        if (cancelled || parsedPdf.pages.length === 0) {
-          return;
-        }
-
-        markLocalTextReady(targetDocument.id, parsedPdf);
-
-        if (
-          !syncedDocumentsRef.current.has(targetDocument.id) &&
-          (targetDocument.chunkCount === 0 ||
-            targetDocument.extractionMode === "ocr-recommended")
-        ) {
-          syncedDocumentsRef.current.add(targetDocument.id);
-
-          let timeoutId: number | undefined;
-
-          try {
-            const { document: updatedDocument } = await Promise.race([
-              requestDocumentReindex({
-                documentId: targetDocument.id,
-                parsedPdf,
-              }),
-              new Promise<never>((_, reject) => {
-                timeoutId = window.setTimeout(() => {
-                  reject(new Error("Background sync timed out."));
-                }, BACKGROUND_SYNC_TIMEOUT_MS);
-              }),
-            ]);
-
-            if (!cancelled) {
-              setDocuments((currentDocuments) =>
-                currentDocuments.map((document) =>
-                  document.id === updatedDocument.id ? updatedDocument : document,
-                ),
-              );
-            }
-          } catch {
-            // Live chat already works from cached text. Ignore background sync failures.
-          } finally {
-            if (timeoutId) {
-              window.clearTimeout(timeoutId);
-            }
-          }
-        }
-      } catch {
-        // If local extraction fails, the user can still rely on any existing server index.
-      } finally {
-        if (!cancelled) {
-          setPreparingDocumentId((currentId) =>
-            currentId === targetDocument.id ? "" : currentId,
-          );
-        }
+    void prepareDocumentLiveText(selectedDocument).then(() => {
+      if (cancelled) {
+        return;
       }
-    }
-
-    void prepareDocument();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [localTextReady, markLocalTextReady, preparingDocument, selectedDocument]);
+  }, [localTextReady, prepareDocumentLiveText, selectedDocument]);
 
   if (!loadingDocuments && documents.length === 0) {
     return (
@@ -305,6 +345,7 @@ function ChatWorkspace() {
             selectedDocumentId={selectedDocumentId}
             localTextReady={localTextReady}
             preparingDocument={preparingDocument}
+            ensureDocumentReady={prepareDocumentLiveText}
             onDocumentChange={(documentId) => {
               setSelectedDocumentId(documentId);
               setViewerPageNumber(1);

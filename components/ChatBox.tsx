@@ -21,6 +21,7 @@ type ChatBoxProps = {
   selectedDocumentId: string;
   localTextReady: boolean;
   preparingDocument: boolean;
+  ensureDocumentReady: (document: IndexedDocument) => Promise<boolean>;
   onDocumentChange: (documentId: string) => void;
   onSourceSelect?: (source: ChatSource) => void;
 };
@@ -64,7 +65,7 @@ function createIntroMessage(
     return {
       id: "assistant-intro",
       role: "assistant",
-      text: `Preparing "${document.name}" for instant answers. This should only take a moment.`,
+      text: `Preparing "${document.name}" for instant answers. You can ask now and Lexora will finish the live text path in the background.`,
       createdAt: new Date(0).toISOString(),
     };
   }
@@ -72,7 +73,7 @@ function createIntroMessage(
   return {
     id: "assistant-intro",
     role: "assistant",
-    text: `"${document.name}" is loaded. If answers are limited, reopen the document after upload so Lexora can prepare live document text.`,
+    text: `"${document.name}" is loaded. Ask your question and Lexora will prepare live document text on demand if the server index is still catching up.`,
     createdAt: new Date(0).toISOString(),
   };
 }
@@ -95,6 +96,7 @@ export default function ChatBox({
   selectedDocumentId,
   localTextReady,
   preparingDocument,
+  ensureDocumentReady,
   onDocumentChange,
   onSourceSelect,
 }: ChatBoxProps) {
@@ -108,8 +110,10 @@ export default function ChatBox({
 
   const selectedDocument =
     documents.find((document) => document.id === selectedDocumentId) ?? null;
-  const canAskQuestion =
-    selectedDocument !== null && (localTextReady || selectedDocument.chunkCount > 0);
+  const canAskQuestion = selectedDocument !== null;
+  const documentReadyForImmediateAnswers =
+    selectedDocument !== null &&
+    (localTextReady || selectedDocument.chunkCount > 0);
   const introMessage = useMemo(
     () => createIntroMessage(selectedDocument, localTextReady, preparingDocument),
     [localTextReady, preparingDocument, selectedDocument],
@@ -198,13 +202,6 @@ export default function ChatBox({
       return;
     }
 
-    const clientContext =
-      localTextReady &&
-      (selectedDocument.chunkCount === 0 ||
-        selectedDocument.extractionMode === "ocr-recommended")
-        ? buildClientChatContext(selectedDocument, trimmedQuestion)
-        : null;
-
     const userMessage: ConversationMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -220,6 +217,25 @@ export default function ChatBox({
     const assistantMessageId = `assistant-${Date.now()}`;
 
     try {
+      let liveTextReadyForRequest = localTextReady;
+
+      if (!liveTextReadyForRequest && selectedDocument.chunkCount === 0) {
+        liveTextReadyForRequest = await ensureDocumentReady(selectedDocument);
+      }
+
+      if (!liveTextReadyForRequest && selectedDocument.chunkCount === 0) {
+        throw new Error(
+          "I could not prepare searchable text for this PDF. Reupload the file if it should contain selectable text, or run Deep Scan/OCR for scanned pages.",
+        );
+      }
+
+      const clientContext =
+        liveTextReadyForRequest &&
+        (selectedDocument.chunkCount === 0 ||
+          selectedDocument.extractionMode === "ocr-recommended")
+          ? buildClientChatContext(selectedDocument, trimmedQuestion)
+          : null;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -392,17 +408,19 @@ export default function ChatBox({
               </h2>
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                  canAskQuestion
+                  documentReadyForImmediateAnswers
                     ? "bg-emerald-400/10 text-emerald-300"
                     : "bg-amber-400/10 text-amber-300"
                 }`}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    canAskQuestion ? "bg-emerald-400" : "bg-amber-300"
+                    documentReadyForImmediateAnswers
+                      ? "bg-emerald-400"
+                      : "bg-amber-300"
                   }`}
                 />
-                {canAskQuestion ? "Ready" : "Preparing"}
+                {documentReadyForImmediateAnswers ? "Ready" : "Preparing"}
               </span>
             </div>
             <p className="text-sm text-slate-400">
@@ -444,10 +462,10 @@ export default function ChatBox({
                     {localTextReady
                       ? "Instant chat ready"
                       : preparingDocument
-                        ? "Preparing live text"
+                        ? "Preparing live text in background"
                         : selectedDocument.chunkCount > 0
                           ? "Indexed"
-                          : "Open this document once to prime live chat"}
+                          : "First question will prepare live text"}
                   </span>
                 </div>
               </div>
@@ -505,15 +523,17 @@ export default function ChatBox({
         selectedDocument={selectedDocument}
         canAskQuestion={canAskQuestion}
         blockedReason={
-          !selectedDocument
-            ? "Select a document first."
-            : preparingDocument && !localTextReady && selectedDocument.chunkCount === 0
-              ? "Preparing live document text..."
-              : ""
+          !selectedDocument ? "Select a document first." : ""
         }
         helperText={
           localTextReady && selectedDocument?.chunkCount === 0
             ? "Live document text is active. Background indexing can finish separately."
+            : selectedDocument &&
+                !localTextReady &&
+                selectedDocument.chunkCount === 0
+              ? preparingDocument
+                ? "Live document text is preparing in the background. You can ask now."
+                : "This document is not indexed yet. Your first question will trigger live preparation."
             : ""
         }
         loading={loading}
