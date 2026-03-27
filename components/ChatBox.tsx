@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  type KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FileText, Sparkles } from "lucide-react";
 
-import { ALL_DOCUMENTS_SCOPE_ID } from "@/lib/chat-constants";
 import { buildClientChatContext } from "@/lib/clientChatContext";
 import type {
   ChatSource,
@@ -18,74 +12,59 @@ import type {
 } from "@/lib/types";
 
 import ChatComposer from "./ChatComposer";
-import ChatHeader from "./ChatHeader";
-import { MessageSkeleton } from "./ui/Skeleton";
 import MessageBubble from "./MessageBubble";
-import ThreadHistory from "./ThreadHistory";
 import TypingIndicator from "./TypingIndicator";
-
-type SearchMode = "document" | "all";
+import { MessageSkeleton } from "./ui/Skeleton";
 
 type ChatBoxProps = {
   documents: IndexedDocument[];
   selectedDocumentId: string;
-  documentRepairing: boolean;
-  liveDocumentTextReady: boolean;
+  localTextReady: boolean;
+  preparingDocument: boolean;
   onDocumentChange: (documentId: string) => void;
   onSourceSelect?: (source: ChatSource) => void;
 };
 
-function createAssistantIntro(
+function createIntroMessage(
   document: IndexedDocument | null,
-  searchMode: SearchMode,
-  documentCount: number,
-  documentRepairing: boolean,
-  liveDocumentTextReady: boolean,
+  localTextReady: boolean,
+  preparingDocument: boolean,
 ): ConversationMessage {
-  if (documentCount === 0) {
+  if (!document) {
     return {
       id: "assistant-intro",
       role: "assistant",
-      text: "Upload a PDF to start a grounded conversation.",
+      text: "Select a PDF to start chatting with it.",
       createdAt: new Date(0).toISOString(),
     };
   }
 
-  if (
-    searchMode === "document" &&
-    documentRepairing &&
-    document &&
-    !liveDocumentTextReady
-  ) {
+  if (localTextReady) {
     return {
       id: "assistant-intro",
       role: "assistant",
-      text: `"${document.name}" is still rebuilding searchable text. Wait for the rebuild banner to finish before asking grounded questions.`,
+      text:
+        document.chunkCount > 0
+          ? `Ready. Ask anything about "${document.name}" and I’ll answer from the document with citations.`
+          : `Ready. "${document.name}" is available for live chat now, and background indexing can keep improving retrieval.`,
       createdAt: new Date(0).toISOString(),
     };
   }
 
-  if (
-    searchMode === "document" &&
-    document &&
-    liveDocumentTextReady &&
-    (documentRepairing || document.extractionMode === "ocr-recommended")
-  ) {
+  if (document.chunkCount > 0) {
     return {
       id: "assistant-intro",
       role: "assistant",
-      text: `"${document.name}" is ready for live chat now. I’ll answer from the document text already loaded in this workspace while background indexing finishes.`,
+      text: `Ready. "${document.name}" is indexed and available for grounded answers.`,
       createdAt: new Date(0).toISOString(),
     };
   }
 
-  if (searchMode === "all") {
+  if (preparingDocument) {
     return {
       id: "assistant-intro",
       role: "assistant",
-      text: `All-documents retrieval is active across ${documentCount} indexed ${
-        documentCount === 1 ? "file" : "files"
-      }. Keep a viewer document open on the left while answers can cite any source in the library.`,
+      text: `Preparing "${document.name}" for instant answers. This should only take a moment.`,
       createdAt: new Date(0).toISOString(),
     };
   }
@@ -93,261 +72,56 @@ function createAssistantIntro(
   return {
     id: "assistant-intro",
     role: "assistant",
-    text: document
-      ? document.extractionMode === "ocr-recommended"
-        ? `"${document.name}" looks scan-heavy. I can keep it in the workspace, but detailed grounded answers may be limited until a 'Deep Scan' is performed.`
-        : document.extractionMode === "ocr"
-          ? `"${document.name}" was indexed with a Deep Scan. Grounded answers are available, but the extracted text may be a little noisier than a native digital PDF.`
-        : `Ready. Ask about "${document.name}" and I will answer from retrieved evidence only.`
-      : "Select a document to start a grounded conversation.",
+    text: `"${document.name}" is loaded. If answers are limited, reopen the document after upload so Lexora can prepare live document text.`,
     createdAt: new Date(0).toISOString(),
   };
 }
 
-function createPromptChips(
-  document: IndexedDocument | null,
-  searchMode: SearchMode,
-  documentCount: number,
-  liveDocumentTextReady: boolean,
-) {
-  if (documentCount === 0) {
-    return [];
-  }
-
-  if (searchMode === "all") {
-    return [
-      "Summarize the key ideas across all indexed documents.",
-      "Which document contains the strongest evidence for the main topic?",
-      "Compare the most important details across the indexed PDFs.",
-      "What common themes or repeated entities appear across the library?",
-    ];
-  }
-
+function createPromptChips(document: IndexedDocument | null) {
   if (!document) {
     return [];
   }
 
-  if (document.extractionMode === "ocr-recommended" && !liveDocumentTextReady) {
-    return [
-      `What parts of "${document.name}" appear to be Deep Scan limited?`,
-      "What metadata or visible structure can you still infer from this file?",
-      "Can I run a Deep Scan now to improve retrieval quality?",
-    ];
-  }
-
-  if (document.extractionMode === "ocr") {
-    return [
-      `Give me a summary of "${document.name}" and flag any OCR uncertainty.`,
-      "List the most important facts you extracted from the OCR text.",
-      "Which pages look most useful to inspect manually in the viewer?",
-      "What names, dates, or numbers should I double-check against the PDF?",
-    ];
-  }
-
   return [
-    `Give me a crisp summary of "${document.name}".`,
-    "List the most important facts and entities.",
-    "What are the strongest highlights in this document?",
-    "Which details matter most for decision-making?",
+    `Give me a concise summary of "${document.name}".`,
+    "Extract the key facts, entities, and dates.",
+    "What are the most important highlights in this document?",
+    "List the strongest evidence with page references.",
   ];
-}
-
-function toMarkdownTranscript(
-  conversationTitle: string,
-  messages: ConversationMessage[],
-) {
-  return [
-    `# ${conversationTitle}`,
-    "",
-    ...messages.flatMap((message) => [
-      `## ${message.role === "user" ? "User" : "Assistant"}`,
-      "",
-      message.text,
-      "",
-    ]),
-  ].join("\n");
 }
 
 export default function ChatBox({
   documents,
   selectedDocumentId,
-  documentRepairing,
-  liveDocumentTextReady,
+  localTextReady,
+  preparingDocument,
   onDocumentChange,
   onSourceSelect,
 }: ChatBoxProps) {
-  const [searchMode, setSearchMode] = useState<SearchMode>("document");
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [conversationSummaries, setConversationSummaries] = useState<
-    ConversationSummary[]
-  >([]);
-  const [selectedConversationId, setSelectedConversationId] = useState("");
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingConversations, setLoadingConversations] = useState(false);
-  const [loadingConversationDetail, setLoadingConversationDetail] =
-    useState(false);
   const [conversationError, setConversationError] = useState("");
-  const [deletingConversationId, setDeletingConversationId] = useState("");
-  const [threadSummary, setThreadSummary] = useState("");
-  const [summarizingConversation, setSummarizingConversation] = useState(false);
+  const [conversationId, setConversationId] = useState("");
+  const [hasLoadedConversation, setHasLoadedConversation] = useState(false);
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
-  const selectedConversationIdRef = useRef(selectedConversationId);
 
   const selectedDocument =
     documents.find((document) => document.id === selectedDocumentId) ?? null;
-  const conversationScopeId =
-    searchMode === "all"
-      ? ALL_DOCUMENTS_SCOPE_ID
-      : (selectedDocument?.id ?? "");
   const canAskQuestion =
-    searchMode === "all"
-      ? documents.length > 0
-      : selectedDocument !== null &&
-        (!documentRepairing || liveDocumentTextReady);
+    selectedDocument !== null && (localTextReady || selectedDocument.chunkCount > 0);
+  const introMessage = useMemo(
+    () => createIntroMessage(selectedDocument, localTextReady, preparingDocument),
+    [localTextReady, preparingDocument, selectedDocument],
+  );
   const promptChips = useMemo(
-    () =>
-      createPromptChips(
-        selectedDocument,
-        searchMode,
-        documents.length,
-        liveDocumentTextReady,
-      ),
-    [documents.length, liveDocumentTextReady, searchMode, selectedDocument],
+    () => createPromptChips(selectedDocument),
+    [selectedDocument],
   );
   const displayedMessages = useMemo(
-    () =>
-      messages.length > 0
-        ? messages
-        : [
-            createAssistantIntro(
-              selectedDocument,
-              searchMode,
-              documents.length,
-              documentRepairing,
-              liveDocumentTextReady,
-            ),
-          ],
-    [
-      documentRepairing,
-      documents.length,
-      liveDocumentTextReady,
-      messages,
-      searchMode,
-      selectedDocument,
-    ],
+    () => (messages.length > 0 ? messages : [introMessage]),
+    [introMessage, messages],
   );
-  const activeConversation =
-    conversationSummaries.find(
-      (conversation) => conversation.id === selectedConversationId,
-    ) ?? null;
-
-  useEffect(() => {
-    selectedConversationIdRef.current = selectedConversationId;
-  }, [selectedConversationId]);
-
-  useEffect(() => {
-    setQuestion("");
-    setConversationError("");
-    setThreadSummary("");
-  }, [searchMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadConversationSummaries() {
-      if (!conversationScopeId) {
-        setConversationSummaries([]);
-        setSelectedConversationId("");
-        setMessages([]);
-        return;
-      }
-
-      setConversationSummaries([]);
-      setSelectedConversationId("");
-      setMessages([]);
-      setLoadingConversations(true);
-      setConversationError("");
-
-      try {
-        const response = await fetch(
-          `/api/conversations?documentId=${encodeURIComponent(conversationScopeId)}`,
-          { cache: "no-store" },
-        );
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Unable to load conversations.");
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextSummaries: ConversationSummary[] =
-          data.conversations ?? [];
-        const nextConversationId =
-          nextSummaries.find(
-            (conversation) =>
-              conversation.id === selectedConversationIdRef.current,
-          )?.id ??
-          nextSummaries[0]?.id ??
-          "";
-
-        setConversationSummaries(nextSummaries);
-        setSelectedConversationId(nextConversationId);
-        setQuestion("");
-        setThreadSummary("");
-
-        if (!nextConversationId) {
-          setMessages([]);
-          return;
-        }
-
-        setLoadingConversationDetail(true);
-
-        const detailResponse = await fetch(
-          `/api/conversations/${nextConversationId}`,
-          {
-            cache: "no-store",
-          },
-        );
-        const detailData = await detailResponse.json();
-
-        if (!detailResponse.ok) {
-          throw new Error(
-            detailData.error || "Unable to load the conversation.",
-          );
-        }
-
-        if (!cancelled) {
-          setMessages(detailData.conversation?.messages ?? []);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setConversationError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load conversations.",
-          );
-          setConversationSummaries([]);
-          setSelectedConversationId("");
-          setMessages([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingConversations(false);
-          setLoadingConversationDetail(false);
-        }
-      }
-    }
-
-    void loadConversationSummaries();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationScopeId]);
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({
@@ -356,317 +130,80 @@ export default function ChatBox({
     });
   }, [displayedMessages, loading]);
 
-  async function loadConversationDetail(conversationId: string) {
-    setLoadingConversationDetail(true);
+  useEffect(() => {
+    setMessages([]);
+    setQuestion("");
     setConversationError("");
-    setSelectedConversationId(conversationId);
-    setThreadSummary("");
+    setConversationId("");
+    setHasLoadedConversation(false);
+  }, [selectedDocumentId]);
 
-    try {
-      const response = await fetch(
-        `/api/conversations/${conversationId}`,
-        {
-          cache: "no-store",
-        },
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Unable to load the conversation.",
-        );
-      }
-
-      setMessages(data.conversation?.messages ?? []);
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load the conversation.",
-      );
-    } finally {
-      setLoadingConversationDetail(false);
-    }
-  }
-
-  async function createNewConversation() {
-    if (!conversationScopeId) {
+  useEffect(() => {
+    if (!selectedDocumentId) {
       return;
     }
 
-    setLoadingConversations(true);
-    setConversationError("");
+    let cancelled = false;
 
-    try {
-      const response = await fetch("/api/conversations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          documentId: conversationScopeId,
-          title:
-            searchMode === "all"
-              ? "All documents thread"
-              : `${selectedDocument?.name ?? "Document"} thread`,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Unable to create a conversation.",
+    async function loadLatestConversation() {
+      try {
+        const response = await fetch(
+          `/api/conversations?documentId=${encodeURIComponent(selectedDocumentId)}`,
+          { cache: "no-store" },
         );
-      }
+        const data = await response.json();
 
-      const nextConversation: ConversationSummary = data.conversation;
-      setConversationSummaries((currentSummaries) => [
-        nextConversation,
-        ...currentSummaries.filter(
-          (conversation) => conversation.id !== nextConversation.id,
-        ),
-      ]);
-      setSelectedConversationId(nextConversation.id);
-      setMessages([]);
-      setQuestion("");
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to create a conversation.",
-      );
-    } finally {
-      setLoadingConversations(false);
-    }
-  }
+        if (!response.ok || cancelled) {
+          return;
+        }
 
-  async function renameConversationById(
-    conversationId: string,
-    nextTitle: string,
-  ) {
-    if (!nextTitle.trim()) {
-      return;
-    }
+        const latestConversation = (data.conversations as ConversationSummary[] | undefined)?.[0];
 
-    setConversationError("");
+        if (!latestConversation) {
+          setHasLoadedConversation(true);
+          return;
+        }
 
-    try {
-      const response = await fetch(
-        `/api/conversations/${conversationId}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: nextTitle.trim(),
-          }),
-        },
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Unable to rename the conversation.",
+        const detailResponse = await fetch(
+          `/api/conversations/${latestConversation.id}`,
+          { cache: "no-store" },
         );
-      }
+        const detailData = await detailResponse.json();
 
-      const renamedConversation: ConversationSummary = data.conversation;
+        if (!detailResponse.ok || cancelled) {
+          return;
+        }
 
-      setConversationSummaries((currentSummaries) =>
-        currentSummaries.map((conversation) =>
-          conversation.id === renamedConversation.id
-            ? renamedConversation
-            : conversation,
-        ),
-      );
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to rename the conversation.",
-      );
-    }
-  }
-
-  async function updateConversationPinnedById(
-    conversationId: string,
-    pinned: boolean,
-  ) {
-    setConversationError("");
-
-    try {
-      const response = await fetch(`/api/conversations/${conversationId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ pinned }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to update the thread.");
-      }
-
-      const updatedConversation: ConversationSummary = data.conversation;
-      setConversationSummaries((currentSummaries) =>
-        [
-          ...currentSummaries.map((conversation) =>
-            conversation.id === updatedConversation.id
-              ? updatedConversation
-              : conversation,
-          ),
-        ].sort(
-          (left, right) =>
-            Number(Boolean(right.pinned)) - Number(Boolean(left.pinned)) ||
-            Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""),
-        ),
-      );
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to update the thread.",
-      );
-    }
-  }
-
-  async function duplicateConversationById(conversationId: string) {
-    setConversationError("");
-
-    try {
-      const response = await fetch(`/api/conversations/${conversationId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action: "duplicate" }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to duplicate the conversation.");
-      }
-
-      const duplicatedConversation: ConversationSummary = data.conversation;
-      setConversationSummaries((currentSummaries) => [
-        duplicatedConversation,
-        ...currentSummaries.filter(
-          (conversation) => conversation.id !== duplicatedConversation.id,
-        ),
-      ]);
-      await loadConversationDetail(duplicatedConversation.id);
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to duplicate the conversation.",
-      );
-    }
-  }
-
-  async function summarizeActiveConversation() {
-    if (!selectedConversationId) {
-      return;
-    }
-
-    setSummarizingConversation(true);
-    setConversationError("");
-
-    try {
-      const response = await fetch(`/api/conversations/${selectedConversationId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action: "summarize" }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to summarize the conversation.");
-      }
-
-      setThreadSummary(typeof data.summary === "string" ? data.summary : "");
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to summarize the conversation.",
-      );
-    } finally {
-      setSummarizingConversation(false);
-    }
-  }
-
-  function exportActiveConversation() {
-    if (!activeConversation || messages.length === 0) {
-      return;
-    }
-
-    const contents = toMarkdownTranscript(activeConversation.title, messages);
-    const blob = new Blob([contents], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${activeConversation.title.replace(/[^\w-]+/g, "-").toLowerCase() || "thread"}.md`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function deleteConversationById(conversationId: string) {
-    setDeletingConversationId(conversationId);
-    setConversationError("");
-
-    try {
-      const response = await fetch(
-        `/api/conversations/${conversationId}`,
-        {
-          method: "DELETE",
-        },
-      );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Unable to delete the conversation.",
-        );
-      }
-
-      const remainingSummaries = conversationSummaries.filter(
-        (conversation) => conversation.id !== conversationId,
-      );
-
-      setConversationSummaries(remainingSummaries);
-
-      if (selectedConversationId === conversationId) {
-        const nextConversationId = remainingSummaries[0]?.id ?? "";
-        setSelectedConversationId(nextConversationId);
-
-        if (nextConversationId) {
-          await loadConversationDetail(nextConversationId);
-        } else {
-          setMessages([]);
+        setConversationId(latestConversation.id);
+        setMessages(detailData.conversation?.messages ?? []);
+        setHasLoadedConversation(true);
+      } catch {
+        if (!cancelled) {
+          setHasLoadedConversation(true);
         }
       }
-    } catch (error) {
-      setConversationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to delete the conversation.",
-      );
-    } finally {
-      setDeletingConversationId("");
     }
-  }
+
+    void loadLatestConversation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDocumentId]);
 
   async function sendQuestion(prefilledQuestion?: string) {
     const trimmedQuestion = (prefilledQuestion ?? question).trim();
 
-    if (!trimmedQuestion || !canAskQuestion) {
+    if (!trimmedQuestion || !selectedDocument || !canAskQuestion) {
       return;
     }
+
+    const clientContext =
+      localTextReady &&
+      (selectedDocument.chunkCount === 0 ||
+        selectedDocument.extractionMode === "ocr-recommended")
+        ? buildClientChatContext(selectedDocument, trimmedQuestion)
+        : null;
 
     const userMessage: ConversationMessage = {
       id: `user-${Date.now()}`,
@@ -683,16 +220,6 @@ export default function ChatBox({
     const assistantMessageId = `assistant-${Date.now()}`;
 
     try {
-      const clientContext =
-        searchMode === "document" &&
-        selectedDocument &&
-        liveDocumentTextReady &&
-        (documentRepairing ||
-          selectedDocument.chunkCount === 0 ||
-          selectedDocument.extractionMode === "ocr-recommended")
-          ? buildClientChatContext(selectedDocument, trimmedQuestion)
-          : null;
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -700,30 +227,26 @@ export default function ChatBox({
         },
         body: JSON.stringify({
           question: trimmedQuestion,
-          documentId: selectedDocument?.id ?? "",
-          conversationId: selectedConversationId || undefined,
-          searchMode,
+          documentId: selectedDocument.id,
+          conversationId: conversationId || undefined,
+          searchMode: "document",
           clientContext,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          errorData.error || "The document question failed.",
-        );
+        throw new Error(errorData.error || "The document question failed.");
       }
 
       const contentType = response.headers.get("content-type") ?? "";
 
       if (contentType.includes("text/event-stream") && response.body) {
-        // Streaming SSE response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedText = "";
         let sseBuffer = "";
 
-        // Add initial assistant message
         setMessages((currentMessages) => [
           ...currentMessages,
           {
@@ -735,7 +258,6 @@ export default function ChatBox({
         ]);
 
         let finalSources: ChatSource[] = [];
-        let finalConversation: ConversationSummary | undefined;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -760,12 +282,16 @@ export default function ChatBox({
             }
 
             try {
-              const event = JSON.parse(payload);
+              const event = JSON.parse(payload) as {
+                type?: string;
+                text?: string;
+                answer?: string;
+                sources?: ChatSource[];
+                conversation?: ConversationSummary;
+              };
 
               if (event.type === "sources") {
                 finalSources = event.sources ?? [];
-                
-                // Immediately push sources to UI
                 setMessages((currentMessages) =>
                   currentMessages.map((message) =>
                     message.id === assistantMessageId
@@ -775,8 +301,6 @@ export default function ChatBox({
                 );
               } else if (event.type === "delta") {
                 accumulatedText += event.text ?? "";
-                
-                // Stream text changes
                 setMessages((currentMessages) =>
                   currentMessages.map((message) =>
                     message.id === assistantMessageId
@@ -785,18 +309,17 @@ export default function ChatBox({
                   ),
                 );
               } else if (event.type === "done") {
-                finalConversation = event.conversation;
-                if (event.answer) {
-                  accumulatedText = event.answer;
+                accumulatedText = event.answer ?? accumulatedText;
+                if (event.conversation?.id) {
+                  setConversationId(event.conversation.id);
                 }
               }
             } catch {
-              // Skip malformed SSE event
+              // Ignore malformed SSE events.
             }
           }
         }
 
-        // Final update with sources
         setMessages((currentMessages) =>
           currentMessages.map((message) =>
             message.id === assistantMessageId
@@ -810,32 +333,11 @@ export default function ChatBox({
               : message,
           ),
         );
-
-        if (finalConversation) {
-          setConversationSummaries((currentSummaries) => [
-            finalConversation!,
-            ...currentSummaries.filter(
-              (existingConversation) =>
-                existingConversation.id !== finalConversation!.id,
-            ),
-          ]);
-          setSelectedConversationId(finalConversation.id);
-        }
       } else {
-        // Fallback: regular JSON response
         const data = await response.json();
-        const conversation: ConversationSummary | undefined =
-          data.conversation;
 
-        if (conversation) {
-          setConversationSummaries((currentSummaries) => [
-            conversation,
-            ...currentSummaries.filter(
-              (existingConversation) =>
-                existingConversation.id !== conversation.id,
-            ),
-          ]);
-          setSelectedConversationId(conversation.id);
+        if (data.conversation?.id) {
+          setConversationId(data.conversation.id);
         }
 
         setMessages((currentMessages) => [
@@ -872,9 +374,7 @@ export default function ChatBox({
     }
   }
 
-  function handleComposerKeyDown(
-    event: KeyboardEvent<HTMLTextAreaElement>,
-  ) {
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void sendQuestion();
@@ -882,49 +382,103 @@ export default function ChatBox({
   }
 
   return (
-    <div className="flex h-full flex-col min-h-0">
-      <ChatHeader
-        documents={documents}
-        selectedDocumentId={selectedDocumentId}
-        searchMode={searchMode}
-        activeConversation={activeConversation}
-        canAskQuestion={canAskQuestion}
-        promptChips={promptChips}
-        messages={messages}
-        summaryText={threadSummary}
-        summarizingConversation={summarizingConversation}
-        onDocumentChange={onDocumentChange}
-        onSearchModeChange={setSearchMode}
-        onPromptChipClick={(prompt) => setQuestion(prompt)}
-        onSummarizeConversation={() => void summarizeActiveConversation()}
-        onExportConversation={exportActiveConversation}
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-white/[0.06] px-5 py-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-white">
+                Lexora AI
+              </h2>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                  canAskQuestion
+                    ? "bg-emerald-400/10 text-emerald-300"
+                    : "bg-amber-400/10 text-amber-300"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    canAskQuestion ? "bg-emerald-400" : "bg-amber-300"
+                  }`}
+                />
+                {canAskQuestion ? "Ready" : "Preparing"}
+              </span>
+            </div>
+            <p className="text-sm text-slate-400">
+              {selectedDocument
+                ? `Ask directly about "${selectedDocument.name}" with grounded citations.`
+                : "Choose a document to begin."}
+            </p>
+          </div>
 
-      <ThreadHistory
-        conversationSummaries={conversationSummaries}
-        selectedConversationId={selectedConversationId}
-        loadingConversations={loadingConversations}
-        deletingConversationId={deletingConversationId}
-        conversationScopeId={conversationScopeId}
-        onLoadConversation={(id) => void loadConversationDetail(id)}
-        onCreateNew={() => void createNewConversation()}
-        onRename={(id, title) => void renameConversationById(id, title)}
-        onPin={(id, pinned) => void updateConversationPinnedById(id, pinned)}
-        onDuplicate={(id) => void duplicateConversationById(id)}
-        onDelete={(id) => void deleteConversationById(id)}
-      />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Document
+              </label>
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-cyan-300" />
+                <select
+                  value={selectedDocumentId}
+                  onChange={(event) => onDocumentChange(event.target.value)}
+                  className="min-w-[220px] bg-transparent text-sm text-white outline-none"
+                >
+                  {documents.map((document) => (
+                    <option key={document.id} value={document.id} className="bg-slate-950">
+                      {document.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-      {/* ── Messages area ── */}
-      <div className="relative flex-1 min-h-0 overflow-y-auto px-4 py-4">
-        {loadingConversationDetail ? (
-          <div className="space-y-4 pb-3">
-            <MessageSkeleton />
-            <div className="flex justify-end"><div className="h-10 w-48 animate-pulse rounded-2xl rounded-br-md bg-white/[0.06]" /></div>
+            {selectedDocument ? (
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-slate-400">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Status
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                  <span>
+                    {localTextReady
+                      ? "Instant chat ready"
+                      : preparingDocument
+                        ? "Preparing live text"
+                        : selectedDocument.chunkCount > 0
+                          ? "Indexed"
+                          : "Open this document once to prime live chat"}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {promptChips.length > 0 && messages.length === 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {promptChips.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => setQuestion(prompt)}
+                className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-slate-300 transition hover:border-cyan-400/20 hover:bg-cyan-400/8 hover:text-cyan-200"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="relative flex-1 min-h-0 overflow-y-auto px-5 py-6">
+        {!hasLoadedConversation && selectedDocument ? (
+          <div className="space-y-4 pb-4">
             <MessageSkeleton />
           </div>
         ) : null}
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           {displayedMessages.map((message, index) => (
             <MessageBubble
               key={message.id}
@@ -947,21 +501,19 @@ export default function ChatBox({
 
       <ChatComposer
         question={question}
-        searchMode={searchMode}
+        searchMode="document"
         selectedDocument={selectedDocument}
         canAskQuestion={canAskQuestion}
         blockedReason={
-          searchMode === "document" &&
-          documentRepairing &&
-          !liveDocumentTextReady
-            ? "Lexora is still preparing searchable text for this document."
-            : ""
+          !selectedDocument
+            ? "Select a document first."
+            : preparingDocument && !localTextReady && selectedDocument.chunkCount === 0
+              ? "Preparing live document text..."
+              : ""
         }
         helperText={
-          searchMode === "document" &&
-          documentRepairing &&
-          liveDocumentTextReady
-            ? "Using live document text now while background indexing finishes."
+          localTextReady && selectedDocument?.chunkCount === 0
+            ? "Live document text is active. Background indexing can finish separately."
             : ""
         }
         loading={loading}

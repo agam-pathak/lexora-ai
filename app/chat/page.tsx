@@ -1,11 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import {
-  ArrowRight,
-  FileText,
-  MessageSquareText,
-} from "lucide-react";
+import { ArrowRight, FileText, MessageSquareText } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -19,22 +15,20 @@ import {
 } from "react";
 
 import ChatBox from "@/components/ChatBox";
+import { WorkspaceLoadingSkeleton } from "@/components/ui/Skeleton";
 import {
   cacheParsedPdfDocument,
   hasCachedParsedPdfDocument,
 } from "@/lib/clientParsedPdfCache";
 import { requestDocumentReindex } from "@/lib/clientIndexing";
 import { extractPdfDocumentFromUrl } from "@/lib/clientPdfExtraction";
-import type {
-  ChatSource,
-  IndexedDocument,
-  ParsedPdfDocument,
-} from "@/lib/types";
+import type { ChatSource, IndexedDocument, ParsedPdfDocument } from "@/lib/types";
 
 const PDFViewer = dynamic(() => import("@/components/PDFViewer"), {
   ssr: false,
 });
-const BACKGROUND_REINDEX_TIMEOUT_MS = 20_000;
+
+const BACKGROUND_SYNC_TIMEOUT_MS = 20_000;
 
 function ChatWorkspace() {
   const searchParams = useSearchParams();
@@ -44,21 +38,19 @@ function ChatWorkspace() {
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const [repairingDocumentId, setRepairingDocumentId] = useState("");
-  const [liveTextDocumentIds, setLiveTextDocumentIds] = useState<string[]>([]);
+  const [preparingDocumentId, setPreparingDocumentId] = useState("");
   const [viewerPageNumber, setViewerPageNumber] = useState(1);
   const [focusedSource, setFocusedSource] = useState<ChatSource | null>(null);
   const [mobilePane, setMobilePane] = useState<"viewer" | "chat">("chat");
+  const [localTextDocumentIds, setLocalTextDocumentIds] = useState<string[]>([]);
   const selectedDocumentIdRef = useRef(selectedDocumentId);
-  const repairedDocumentsRef = useRef(new Set<string>());
+  const syncedDocumentsRef = useRef(new Set<string>());
 
-  const markLiveTextReady = useCallback(
+  const markLocalTextReady = useCallback(
     (documentId: string, parsedPdf: ParsedPdfDocument) => {
       cacheParsedPdfDocument(documentId, parsedPdf);
-      setLiveTextDocumentIds((currentIds) =>
-        currentIds.includes(documentId)
-          ? currentIds
-          : [...currentIds, documentId],
+      setLocalTextDocumentIds((currentIds) =>
+        currentIds.includes(documentId) ? currentIds : [...currentIds, documentId],
       );
     },
     [],
@@ -76,9 +68,7 @@ function ChatWorkspace() {
       setErrorMessage("");
 
       try {
-        const response = await fetch("/api/files", {
-          cache: "no-store",
-        });
+        const response = await fetch("/api/files", { cache: "no-store" });
         const data = await response.json();
 
         if (!response.ok) {
@@ -107,16 +97,14 @@ function ChatWorkspace() {
           setSelectedDocumentId(nextSelectedDocumentId);
           setViewerPageNumber(1);
           setFocusedSource(null);
-          setMobilePane(nextDocuments.length > 0 ? "chat" : "viewer");
+          setMobilePane("chat");
         });
       } catch (error) {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "Unable to load documents.",
+          );
         }
-
-        setErrorMessage(
-          error instanceof Error ? error.message : "Unable to load documents.",
-        );
       } finally {
         if (!cancelled) {
           setLoadingDocuments(false);
@@ -136,17 +124,18 @@ function ChatWorkspace() {
     [documents, selectedDocumentId],
   );
   const selectedDocumentKey = selectedDocument?.id ?? "";
-  const selectedDocumentHasLiveText =
+  const localTextReady =
     Boolean(selectedDocumentKey) &&
-    (liveTextDocumentIds.includes(selectedDocumentKey) ||
+    (localTextDocumentIds.includes(selectedDocumentKey) ||
       hasCachedParsedPdfDocument(selectedDocumentKey));
+  const preparingDocument = preparingDocumentId === selectedDocumentKey;
 
   useEffect(() => {
     if (!selectedDocumentKey || !hasCachedParsedPdfDocument(selectedDocumentKey)) {
       return;
     }
 
-    setLiveTextDocumentIds((currentIds) =>
+    setLocalTextDocumentIds((currentIds) =>
       currentIds.includes(selectedDocumentKey)
         ? currentIds
         : [...currentIds, selectedDocumentKey],
@@ -154,94 +143,81 @@ function ChatWorkspace() {
   }, [selectedDocumentKey]);
 
   useEffect(() => {
-    if (
-      !selectedDocument ||
-      (selectedDocument.chunkCount > 0 &&
-        selectedDocument.extractionMode !== "ocr-recommended") ||
-      repairedDocumentsRef.current.has(selectedDocument.id)
-    ) {
+    if (!selectedDocument || localTextReady || preparingDocument) {
       return;
     }
 
     const targetDocument = selectedDocument;
-
-    // Additional safety checks before attempting repair
-    if (
-      !targetDocument.fileUrl || // Ensure fileUrl exists
-      targetDocument.extractionMode !== "ocr-recommended" || // Only repair if extractionMode is 'ocr-recommended'
-      repairingDocumentId === targetDocument.id // Prevent re-repairing if already in progress
-    ) {
-      return;
-    }
-
-    repairedDocumentsRef.current.add(targetDocument.id);
     let cancelled = false;
 
-    async function repairSearchableText() {
-      setRepairingDocumentId(targetDocument.id);
+    async function prepareDocument() {
+      setPreparingDocumentId(targetDocument.id);
 
       try {
         const parsedPdf = await extractPdfDocumentFromUrl(
           `/api/files/serve?path=${encodeURIComponent(targetDocument.fileUrl)}`,
         );
 
-        if (parsedPdf.pages.length === 0) {
+        if (cancelled || parsedPdf.pages.length === 0) {
           return;
         }
-        markLiveTextReady(targetDocument.id, parsedPdf);
-        let timeoutId: number | undefined;
-        let updatedDocument: IndexedDocument;
 
-        try {
-          ({ document: updatedDocument } = await Promise.race([
-            requestDocumentReindex({
-              documentId: targetDocument.id,
-              parsedPdf,
-            }),
-            new Promise<never>((_, reject) => {
-              timeoutId = window.setTimeout(() => {
-                reject(
-                  new Error(
-                    "Background document sync took too long. Live chat remains available.",
-                  ),
-                );
-              }, BACKGROUND_REINDEX_TIMEOUT_MS);
-            }),
-          ]));
-        } finally {
-          if (timeoutId) {
-            window.clearTimeout(timeoutId);
+        markLocalTextReady(targetDocument.id, parsedPdf);
+
+        if (
+          !syncedDocumentsRef.current.has(targetDocument.id) &&
+          (targetDocument.chunkCount === 0 ||
+            targetDocument.extractionMode === "ocr-recommended")
+        ) {
+          syncedDocumentsRef.current.add(targetDocument.id);
+
+          let timeoutId: number | undefined;
+
+          try {
+            const { document: updatedDocument } = await Promise.race([
+              requestDocumentReindex({
+                documentId: targetDocument.id,
+                parsedPdf,
+              }),
+              new Promise<never>((_, reject) => {
+                timeoutId = window.setTimeout(() => {
+                  reject(new Error("Background sync timed out."));
+                }, BACKGROUND_SYNC_TIMEOUT_MS);
+              }),
+            ]);
+
+            if (!cancelled) {
+              setDocuments((currentDocuments) =>
+                currentDocuments.map((document) =>
+                  document.id === updatedDocument.id ? updatedDocument : document,
+                ),
+              );
+            }
+          } catch {
+            // Live chat already works from cached text. Ignore background sync failures.
+          } finally {
+            if (timeoutId) {
+              window.clearTimeout(timeoutId);
+            }
           }
         }
-
-        if (cancelled) {
-          return;
-        }
-
-        startTransition(() => {
-          setDocuments((currentDocuments) =>
-            currentDocuments.map((document) =>
-              document.id === updatedDocument.id ? updatedDocument : document,
-            ),
-          );
-        });
-      } catch (error) {
-        console.warn("Workspace auto-repair failed for searchable text.", error);
+      } catch {
+        // If local extraction fails, the user can still rely on any existing server index.
       } finally {
         if (!cancelled) {
-          setRepairingDocumentId((currentId) =>
+          setPreparingDocumentId((currentId) =>
             currentId === targetDocument.id ? "" : currentId,
           );
         }
       }
     }
 
-    void repairSearchableText();
+    void prepareDocument();
 
     return () => {
       cancelled = true;
     };
-  }, [markLiveTextReady, repairingDocumentId, selectedDocument]);
+  }, [localTextReady, markLocalTextReady, preparingDocument, selectedDocument]);
 
   if (!loadingDocuments && documents.length === 0) {
     return (
@@ -254,8 +230,7 @@ function ChatWorkspace() {
             No indexed PDFs yet
           </h1>
           <p className="mt-3 text-sm leading-7 text-slate-400">
-            Upload a document first, then come back to run grounded questions
-            against retrieved evidence.
+            Upload a document first, then come back to chat with it.
           </p>
           <div className="mt-8 flex justify-center">
             <Link href="/upload" className="premium-button">
@@ -299,82 +274,62 @@ function ChatWorkspace() {
         </div>
       </div>
 
-      <div className="grid h-full min-h-0 grid-cols-1 gap-0 xl:grid-cols-[minmax(420px,0.92fr)_minmax(560px,1.08fr)] 2xl:grid-cols-[minmax(460px,0.88fr)_minmax(680px,1.12fr)]">
-      {/* ── Left: PDF Viewer ── */}
-      <section
-        className={`${
-          mobilePane === "viewer" ? "flex" : "hidden"
-        } min-h-0 flex-col overflow-hidden border-r border-white/[0.06] xl:flex`}
-      >
-        {errorMessage ? (
-          <p className="border-b border-rose-400/20 bg-rose-400/5 px-4 py-2 text-xs text-rose-300">
-            {errorMessage}
-          </p>
-        ) : null}
-        {repairingDocumentId === selectedDocument?.id ? (
-          <p className="border-b border-cyan-400/20 bg-cyan-400/5 px-4 py-2 text-xs text-cyan-200">
-            {selectedDocumentHasLiveText
-              ? "Live document text is ready. Background indexing is still syncing..."
-              : "Rebuilding searchable text from the local PDF view..."}
-          </p>
-        ) : null}
+      {errorMessage ? (
+        <p className="border-b border-rose-400/20 bg-rose-400/5 px-4 py-2 text-xs text-rose-300">
+          {errorMessage}
+        </p>
+      ) : null}
 
-        <PDFViewer
-          key={selectedDocument?.fileUrl ?? "no-document"}
-          document={selectedDocument}
-          pageNumber={viewerPageNumber}
-          onPageChange={setViewerPageNumber}
-          focusedSource={focusedSource}
-          onDocumentUpdate={(updatedDocument) =>
-            setDocuments((currentDocuments) =>
-              currentDocuments.map((document) =>
-                document.id === updatedDocument.id ? updatedDocument : document,
-              ),
-            )
-          }
-        />
-      </section>
+      <div className="grid h-full min-h-0 grid-cols-1 gap-0 xl:grid-cols-[minmax(420px,0.78fr)_minmax(720px,1.22fr)] 2xl:grid-cols-[minmax(480px,0.74fr)_minmax(800px,1.26fr)]">
+        <section
+          className={`${
+            mobilePane === "viewer" ? "flex" : "hidden"
+          } min-h-0 flex-col overflow-hidden border-r border-white/[0.06] xl:flex`}
+        >
+          <PDFViewer
+            key={selectedDocument?.fileUrl ?? "no-document"}
+            document={selectedDocument}
+            pageNumber={viewerPageNumber}
+            onPageChange={setViewerPageNumber}
+            focusedSource={focusedSource}
+          />
+        </section>
 
-      {/* ── Right: Chat ── */}
-      <section
-        className={`${
-          mobilePane === "chat" ? "flex" : "hidden"
-        } min-h-0 flex-col overflow-hidden xl:flex`}
-      >
-        <ChatBox
-          documents={documents}
-          selectedDocumentId={selectedDocumentId}
-          documentRepairing={repairingDocumentId === selectedDocument?.id}
-          liveDocumentTextReady={selectedDocumentHasLiveText}
-          onDocumentChange={(documentId) => {
-            setSelectedDocumentId(documentId);
-            setViewerPageNumber(1);
-            setFocusedSource(null);
-            setMobilePane("viewer");
-          }}
-          onSourceSelect={(source) => {
-            if (source.documentId && source.documentId !== selectedDocumentId) {
-              setSelectedDocumentId(source.documentId);
-            }
+        <section
+          className={`${
+            mobilePane === "chat" ? "flex" : "hidden"
+          } min-h-0 flex-col overflow-hidden xl:flex`}
+        >
+          <ChatBox
+            documents={documents}
+            selectedDocumentId={selectedDocumentId}
+            localTextReady={localTextReady}
+            preparingDocument={preparingDocument}
+            onDocumentChange={(documentId) => {
+              setSelectedDocumentId(documentId);
+              setViewerPageNumber(1);
+              setFocusedSource(null);
+              setMobilePane("chat");
+            }}
+            onSourceSelect={(source) => {
+              if (source.documentId && source.documentId !== selectedDocumentId) {
+                setSelectedDocumentId(source.documentId);
+              }
 
-            setViewerPageNumber(source.pageStart);
-            setFocusedSource(source);
-            setMobilePane("viewer");
-          }}
-        />
-      </section>
-    </div>
+              setViewerPageNumber(source.pageStart);
+              setFocusedSource(source);
+              setMobilePane("viewer");
+            }}
+          />
+        </section>
+      </div>
     </div>
   );
 }
 
-import { WorkspaceLoadingSkeleton } from "@/components/ui/Skeleton";
-
 export default function ChatPage() {
   return (
-    <Suspense
-      fallback={<WorkspaceLoadingSkeleton />}
-    >
+    <Suspense fallback={<WorkspaceLoadingSkeleton />}>
       <ChatWorkspace />
     </Suspense>
   );

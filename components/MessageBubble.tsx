@@ -1,4 +1,4 @@
-import { ArrowUpRight, Search, Copy, RefreshCcw, ThumbsUp, ThumbsDown, Check } from "lucide-react";
+import { ArrowUpRight, Search, Copy, Check } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "./ui/Toast";
@@ -31,7 +31,6 @@ export default function MessageBubble({
   const [hoveredSourceIndex, setHoveredSourceIndex] = useState<number | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
 
   // Extract followups
   let mainText = text;
@@ -89,13 +88,6 @@ export default function MessageBubble({
     });
   };
 
-  const handleRegenerate = () => {
-    if (onFollowUpClick) {
-      addToast("Regenerating response...", "info");
-      onFollowUpClick("Regenerate"); // In ChatBox, this would ideally trigger a special regen logic, but for now we follow the existing pattern
-    }
-  };
-
   return (
     <div 
       className="group relative space-y-4"
@@ -113,28 +105,6 @@ export default function MessageBubble({
             title="Copy to clipboard"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
-          <button
-            onClick={handleRegenerate}
-            className="rounded-lg p-2 text-slate-500 hover:bg-white/10 hover:text-white transition-colors"
-            title="Regenerate response"
-          >
-            <RefreshCcw className="h-3.5 w-3.5" />
-          </button>
-          <div className="h-4 w-[1px] bg-white/10 mx-1" />
-          <button
-            onClick={() => { setFeedback("up"); addToast("Thanks for the feedback!", "success"); }}
-            className={`rounded-lg p-2 transition-colors ${feedback === "up" ? "text-emerald-400 bg-emerald-500/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
-            title="Good response"
-          >
-            <ThumbsUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => { setFeedback("down"); addToast("Sorry to hear that. I'll try to improve.", "info"); }}
-            className={`rounded-lg p-2 transition-colors ${feedback === "down" ? "text-rose-400 bg-rose-500/10" : "text-slate-500 hover:bg-white/10 hover:text-white"}`}
-            title="Bad response"
-          >
-            <ThumbsDown className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
