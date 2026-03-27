@@ -60,6 +60,16 @@ export type RetrievedChunk = ChunkMetadata & {
   score: number;
 };
 
+export type ClientChatChunkPayload = ChunkMetadata & {
+  text: string;
+  score: number;
+};
+
+export type ClientChatContextPayload = {
+  mode: "client-parsed-pdf";
+  chunks: ClientChatChunkPayload[];
+};
+
 export type ChatSource = {
   documentId: string;
   chunkIndex: number;

@@ -73,7 +73,7 @@ export default function MessageBubble({
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-md rounded-2xl rounded-br-md bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/10 px-4 py-3 text-sm text-slate-100 shadow-lg">
+        <div className="max-w-[min(85%,72ch)] rounded-3xl rounded-br-md border border-cyan-400/10 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 px-5 py-3.5 text-sm text-slate-100 shadow-lg">
           <div className="whitespace-pre-wrap">{mainText}</div>
         </div>
       </div>
@@ -189,7 +189,7 @@ export default function MessageBubble({
       ) : null}
 
       {/* ── Main answer ── */}
-      <div className="text-sm leading-relaxed text-slate-200">
+      <div className="max-w-[78ch] text-sm leading-8 text-slate-200">
         <ReactMarkdown
           components={{
             p: ({ children }: { children?: React.ReactNode }) => <p className="mb-3 last:mb-0">{children}</p>,

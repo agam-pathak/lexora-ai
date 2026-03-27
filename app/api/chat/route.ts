@@ -9,6 +9,7 @@ import {
 } from "@/lib/conversations";
 import { CHAT_MODEL, getGroqClient } from "@/lib/embeddings";
 import { buildContext, retrieveRelevantChunks, toChatSources } from "@/lib/search";
+import type { ClientChatChunkPayload, RetrievedChunk } from "@/lib/types";
 import { getDocument, getDocuments } from "@/lib/vectorStore";
 
 export const runtime = "nodejs";
@@ -90,6 +91,61 @@ function buildChatMessages({
   ];
 }
 
+function coerceClientChunk(value: unknown): RetrievedChunk | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const chunk = value as Partial<ClientChatChunkPayload>;
+
+  if (
+    typeof chunk.documentId !== "string" ||
+    typeof chunk.source !== "string" ||
+    typeof chunk.chunkIndex !== "number" ||
+    typeof chunk.start !== "number" ||
+    typeof chunk.end !== "number" ||
+    typeof chunk.pageStart !== "number" ||
+    typeof chunk.pageEnd !== "number" ||
+    typeof chunk.fileUrl !== "string" ||
+    typeof chunk.text !== "string" ||
+    typeof chunk.score !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    documentId: chunk.documentId,
+    source: chunk.source,
+    chunkIndex: chunk.chunkIndex,
+    start: chunk.start,
+    end: chunk.end,
+    pageStart: chunk.pageStart,
+    pageEnd: chunk.pageEnd,
+    fileUrl: chunk.fileUrl,
+    text: chunk.text,
+    score: chunk.score,
+  };
+}
+
+function coerceClientContextChunks(value: unknown, documentId: string) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("chunks" in value) ||
+    !Array.isArray(value.chunks)
+  ) {
+    return [];
+  }
+
+  return value.chunks
+    .map((chunk) => coerceClientChunk(chunk))
+    .filter(
+      (chunk): chunk is RetrievedChunk =>
+        chunk !== null && chunk.documentId === documentId,
+    )
+    .slice(0, 6);
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -169,7 +225,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const retrievedChunks = await retrieveRelevantChunks({
+    const indexedChunks = await retrieveRelevantChunks({
       userId: session.userId,
       documentId: searchMode === "document" ? documentId : undefined,
       question,
@@ -177,6 +233,19 @@ export async function POST(request: Request) {
       topK: searchMode === "all" ? 6 : 4,
       searchMode,
     });
+    const clientContextChunks =
+      searchMode === "document" && document
+        ? coerceClientContextChunks(body.clientContext, document.id)
+        : [];
+    const retrievedChunks =
+      searchMode === "document" &&
+      document &&
+      clientContextChunks.length > 0 &&
+      (indexedChunks.length === 0 ||
+        document.chunkCount === 0 ||
+        document.extractionMode === "ocr-recommended")
+        ? clientContextChunks
+        : indexedChunks;
 
     const unavailableMessage =
       searchMode === "all"
@@ -189,6 +258,13 @@ export async function POST(request: Request) {
       document.extractionMode === "ocr-recommended"
         ? "This PDF was uploaded, but Lexora could not extract searchable text from it automatically. You can try triggering a 'Deep Scan' from the viewer header to run OCR on the document pages."
         : unavailableMessage;
+    const liveContextUnavailableMessage =
+      searchMode === "document" &&
+      document &&
+      document.chunkCount === 0 &&
+      clientContextChunks.length > 0
+        ? "This PDF is still finishing background indexing, but I can answer from the live document text already loaded in the workspace."
+        : extractionUnavailableMessage;
 
     if (retrievedChunks.length === 0) {
       const conversation = await persistConversationExchange({
@@ -197,11 +273,11 @@ export async function POST(request: Request) {
         documentId:
           searchMode === "all" ? ALL_DOCUMENTS_SCOPE_ID : documentId,
         question,
-        answer: extractionUnavailableMessage,
+        answer: liveContextUnavailableMessage,
       });
 
       return NextResponse.json({
-        answer: extractionUnavailableMessage,
+        answer: liveContextUnavailableMessage,
         sources: [],
         document,
         conversation: summarizeConversation(conversation),

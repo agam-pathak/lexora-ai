@@ -23,6 +23,7 @@ import {
   extractPdfDocumentFromFile,
   extractPdfDocumentFromUrl,
 } from "@/lib/clientPdfExtraction";
+import { cacheParsedPdfDocument } from "@/lib/clientParsedPdfCache";
 import {
   getInlineParsedPdf,
   requestDocumentReindex,
@@ -209,6 +210,9 @@ export default function UploadPage() {
         }
 
         data = finalizeData;
+        if (parsedPdf && finalizeData.document?.id) {
+          cacheParsedPdfDocument(finalizeData.document.id, parsedPdf);
+        }
 
         if (
           parsedPdf &&
@@ -285,6 +289,9 @@ export default function UploadPage() {
 
           request.send(formData);
         });
+        if (parsedPdf && data.document?.id) {
+          cacheParsedPdfDocument(data.document.id, parsedPdf);
+        }
       } finally {
         if (indexingInterval) {
           window.clearInterval(indexingInterval);

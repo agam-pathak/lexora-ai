@@ -13,6 +13,7 @@ type ChatComposerProps = {
   selectedDocument: IndexedDocument | null;
   canAskQuestion: boolean;
   blockedReason?: string;
+  helperText?: string;
   loading: boolean;
   conversationError: string;
   onQuestionChange: (value: string) => void;
@@ -20,8 +21,8 @@ type ChatComposerProps = {
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 };
 
-const MIN_HEIGHT = 44;
-const MAX_HEIGHT = 160;
+const MIN_HEIGHT = 52;
+const MAX_HEIGHT = 192;
 
 export default function ChatComposer({
   question,
@@ -29,6 +30,7 @@ export default function ChatComposer({
   selectedDocument,
   canAskQuestion,
   blockedReason = "",
+  helperText = "",
   loading,
   conversationError,
   onQuestionChange,
@@ -59,7 +61,7 @@ export default function ChatComposer({
         <span>⇧ Shift + Enter adds a line</span>
       </div>
 
-      <div className="relative flex items-end rounded-xl border border-white/[0.08] bg-white/[0.03] pr-1.5 transition-colors focus-within:border-cyan-400/30 focus-within:bg-white/[0.04]">
+      <div className="relative flex items-end rounded-2xl border border-white/[0.08] bg-white/[0.03] pr-2 transition-colors focus-within:border-cyan-400/30 focus-within:bg-white/[0.04]">
         <textarea
           ref={textareaRef}
           value={question}
@@ -76,7 +78,7 @@ export default function ChatComposer({
           }
           disabled={!canAskQuestion || loading}
           rows={1}
-          className="min-h-[44px] flex-1 resize-none overflow-y-auto bg-transparent px-4 py-3 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60 transition-[height] duration-100 ease-out"
+          className="min-h-[52px] flex-1 resize-none overflow-y-auto bg-transparent px-5 py-3.5 text-[15px] leading-7 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60 transition-[height] duration-100 ease-out"
           style={{ height: MIN_HEIGHT }}
         />
 
@@ -84,7 +86,7 @@ export default function ChatComposer({
           type="button"
           onClick={onSend}
           disabled={!canAskQuestion || loading || !question.trim()}
-          className="m-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:grayscale"
+          className="m-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:grayscale"
         >
           <ArrowUp className="h-4 w-4" />
         </button>
@@ -99,6 +101,8 @@ export default function ChatComposer({
 
       {conversationError ? (
         <p className="mt-2 text-xs text-rose-400">{conversationError}</p>
+      ) : helperText ? (
+        <p className="mt-2 text-xs text-emerald-300/80">{helperText}</p>
       ) : blockedReason ? (
         <p className="mt-2 text-xs text-cyan-300/80">{blockedReason}</p>
       ) : null}

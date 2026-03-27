@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { ALL_DOCUMENTS_SCOPE_ID } from "@/lib/chat-constants";
+import { buildClientChatContext } from "@/lib/clientChatContext";
 import type {
   ChatSource,
   ConversationMessage,
@@ -29,6 +30,7 @@ type ChatBoxProps = {
   documents: IndexedDocument[];
   selectedDocumentId: string;
   documentRepairing: boolean;
+  liveDocumentTextReady: boolean;
   onDocumentChange: (documentId: string) => void;
   onSourceSelect?: (source: ChatSource) => void;
 };
@@ -38,6 +40,7 @@ function createAssistantIntro(
   searchMode: SearchMode,
   documentCount: number,
   documentRepairing: boolean,
+  liveDocumentTextReady: boolean,
 ): ConversationMessage {
   if (documentCount === 0) {
     return {
@@ -48,11 +51,30 @@ function createAssistantIntro(
     };
   }
 
-  if (searchMode === "document" && documentRepairing && document) {
+  if (
+    searchMode === "document" &&
+    documentRepairing &&
+    document &&
+    !liveDocumentTextReady
+  ) {
     return {
       id: "assistant-intro",
       role: "assistant",
       text: `"${document.name}" is still rebuilding searchable text. Wait for the rebuild banner to finish before asking grounded questions.`,
+      createdAt: new Date(0).toISOString(),
+    };
+  }
+
+  if (
+    searchMode === "document" &&
+    document &&
+    liveDocumentTextReady &&
+    (documentRepairing || document.extractionMode === "ocr-recommended")
+  ) {
+    return {
+      id: "assistant-intro",
+      role: "assistant",
+      text: `"${document.name}" is ready for live chat now. I’ll answer from the document text already loaded in this workspace while background indexing finishes.`,
       createdAt: new Date(0).toISOString(),
     };
   }
@@ -86,6 +108,7 @@ function createPromptChips(
   document: IndexedDocument | null,
   searchMode: SearchMode,
   documentCount: number,
+  liveDocumentTextReady: boolean,
 ) {
   if (documentCount === 0) {
     return [];
@@ -104,7 +127,7 @@ function createPromptChips(
     return [];
   }
 
-  if (document.extractionMode === "ocr-recommended") {
+  if (document.extractionMode === "ocr-recommended" && !liveDocumentTextReady) {
     return [
       `What parts of "${document.name}" appear to be Deep Scan limited?`,
       "What metadata or visible structure can you still infer from this file?",
@@ -149,6 +172,7 @@ export default function ChatBox({
   documents,
   selectedDocumentId,
   documentRepairing,
+  liveDocumentTextReady,
   onDocumentChange,
   onSourceSelect,
 }: ChatBoxProps) {
@@ -179,10 +203,17 @@ export default function ChatBox({
   const canAskQuestion =
     searchMode === "all"
       ? documents.length > 0
-      : selectedDocument !== null && !documentRepairing;
+      : selectedDocument !== null &&
+        (!documentRepairing || liveDocumentTextReady);
   const promptChips = useMemo(
-    () => createPromptChips(selectedDocument, searchMode, documents.length),
-    [documents.length, searchMode, selectedDocument],
+    () =>
+      createPromptChips(
+        selectedDocument,
+        searchMode,
+        documents.length,
+        liveDocumentTextReady,
+      ),
+    [documents.length, liveDocumentTextReady, searchMode, selectedDocument],
   );
   const displayedMessages = useMemo(
     () =>
@@ -194,9 +225,17 @@ export default function ChatBox({
               searchMode,
               documents.length,
               documentRepairing,
+              liveDocumentTextReady,
             ),
           ],
-    [documentRepairing, documents.length, messages, searchMode, selectedDocument],
+    [
+      documentRepairing,
+      documents.length,
+      liveDocumentTextReady,
+      messages,
+      searchMode,
+      selectedDocument,
+    ],
   );
   const activeConversation =
     conversationSummaries.find(
@@ -644,6 +683,16 @@ export default function ChatBox({
     const assistantMessageId = `assistant-${Date.now()}`;
 
     try {
+      const clientContext =
+        searchMode === "document" &&
+        selectedDocument &&
+        liveDocumentTextReady &&
+        (documentRepairing ||
+          selectedDocument.chunkCount === 0 ||
+          selectedDocument.extractionMode === "ocr-recommended")
+          ? buildClientChatContext(selectedDocument, trimmedQuestion)
+          : null;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -654,6 +703,7 @@ export default function ChatBox({
           documentId: selectedDocument?.id ?? "",
           conversationId: selectedConversationId || undefined,
           searchMode,
+          clientContext,
         }),
       });
 
@@ -901,8 +951,17 @@ export default function ChatBox({
         selectedDocument={selectedDocument}
         canAskQuestion={canAskQuestion}
         blockedReason={
-          searchMode === "document" && documentRepairing
-            ? "Searchable text is still rebuilding for this document."
+          searchMode === "document" &&
+          documentRepairing &&
+          !liveDocumentTextReady
+            ? "Lexora is still preparing searchable text for this document."
+            : ""
+        }
+        helperText={
+          searchMode === "document" &&
+          documentRepairing &&
+          liveDocumentTextReady
+            ? "Using live document text now while background indexing finishes."
             : ""
         }
         loading={loading}
