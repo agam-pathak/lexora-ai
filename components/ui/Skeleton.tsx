@@ -18,6 +18,26 @@ export function Skeleton({ className }: SkeletonProps) {
   );
 }
 
+export function MessageSkeleton() {
+  return (
+    <div className="space-y-3 py-2">
+      <Skeleton className="h-3 w-3/4" />
+      <Skeleton className="h-3 w-1/2" />
+      <Skeleton className="h-3 w-5/6" />
+    </div>
+  );
+}
+
+export function ThreadChipSkeleton() {
+  return (
+    <div className="flex gap-2">
+      {[1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-[56px] w-[160px] shrink-0 rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
 export function ChatLoadingSkeleton() {
   return (
     <div className="space-y-6 px-4 py-6">
