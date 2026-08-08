@@ -156,7 +156,6 @@ export default function AnalyticsDashboard({
 
   const { summary, weakSubjects, performanceTrend, recentSessions } = data;
 
-  // Compute trend direction from last 2 sessions
   const trendDirection =
     performanceTrend.length >= 2
       ? performanceTrend[0].accuracy >= performanceTrend[1].accuracy
@@ -164,12 +163,10 @@ export default function AnalyticsDashboard({
         : "down"
       : "neutral";
 
-  // Find worst and best subjects
   const worstSubject = weakSubjects.length > 0 ? weakSubjects[0] : null;
   const bestSubject =
     weakSubjects.length > 0 ? weakSubjects[weakSubjects.length - 1] : null;
 
-  // Max height for chart bars
   const maxAccuracy = Math.max(
     ...performanceTrend.map((t) => t.accuracy),
     100,
@@ -177,7 +174,6 @@ export default function AnalyticsDashboard({
 
   return (
     <div className="reveal-rise">
-      {/* ── Header Row ── */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white sm:text-2xl">
@@ -200,9 +196,7 @@ export default function AnalyticsDashboard({
         </button>
       </div>
 
-      {/* ── Summary Stat Cards ── */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-        {/* Average Accuracy */}
         <div className="metric-card !rounded-2xl">
           <div className="mb-2 flex items-center gap-2">
             <Target className="h-4 w-4 text-amber-400" />
@@ -225,7 +219,6 @@ export default function AnalyticsDashboard({
           </div>
         </div>
 
-        {/* Total Sessions */}
         <div className="metric-card !rounded-2xl">
           <div className="mb-2 flex items-center gap-2">
             <Trophy className="h-4 w-4 text-amber-400" />
@@ -238,7 +231,6 @@ export default function AnalyticsDashboard({
           </span>
         </div>
 
-        {/* Questions Attempted */}
         <div className="metric-card !rounded-2xl">
           <div className="mb-2 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -256,7 +248,6 @@ export default function AnalyticsDashboard({
           </div>
         </div>
 
-        {/* Total Time */}
         <div className="metric-card !rounded-2xl">
           <div className="mb-2 flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-400" />
@@ -269,7 +260,6 @@ export default function AnalyticsDashboard({
           </span>
         </div>
 
-        {/* Trend */}
         <div className="metric-card !rounded-2xl hidden lg:block">
           <div className="mb-2 flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-fuchsia-400" />
@@ -290,7 +280,6 @@ export default function AnalyticsDashboard({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* ── Performance Trend Chart ── */}
         <div className="lg:col-span-3">
           <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6 backdrop-blur-xl">
             <div className="mb-5 flex items-center gap-2">
@@ -352,7 +341,6 @@ export default function AnalyticsDashboard({
                   })}
                 </div>
 
-                {/* Accuracy baseline */}
                 <div className="flex items-center gap-2 border-t border-white/[0.04] pt-2">
                   <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
                   <span className="text-[10px] text-slate-600">
@@ -369,7 +357,6 @@ export default function AnalyticsDashboard({
           </div>
         </div>
 
-        {/* ── Weak Subjects Panel ── */}
         <div className="lg:col-span-2">
           <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6 backdrop-blur-xl">
             <div className="mb-5 flex items-center gap-2">
@@ -417,7 +404,6 @@ export default function AnalyticsDashboard({
                         </div>
                       </div>
 
-                      {/* Progress bar */}
                       <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
                         <div
                           className={`h-full rounded-full bg-gradient-to-r ${getAccuracyBg(subject.accuracyPct)} transition-all duration-700`}
@@ -425,7 +411,6 @@ export default function AnalyticsDashboard({
                         />
                       </div>
 
-                      {/* Mini stats */}
                       <div className="mt-1 flex gap-3 text-[10px] text-slate-600">
                         <span className="flex items-center gap-0.5">
                           <CheckCircle2 className="h-2.5 w-2.5" />
@@ -451,7 +436,6 @@ export default function AnalyticsDashboard({
               </div>
             )}
 
-            {/* Quick Insights */}
             {worstSubject && bestSubject && worstSubject !== bestSubject && (
               <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.015] p-4">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
@@ -484,7 +468,6 @@ export default function AnalyticsDashboard({
         </div>
       </div>
 
-      {/* ── Recent Sessions Table ── */}
       <div className="mt-6">
         <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6 backdrop-blur-xl">
           <div className="mb-5 flex items-center gap-2">

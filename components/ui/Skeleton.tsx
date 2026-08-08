@@ -18,44 +18,16 @@ export function Skeleton({ className }: SkeletonProps) {
   );
 }
 
-/* ── Pre-built composite skeletons ─────────────────────────── */
-
-/** Three staggered text lines mimicking a chat message. */
-export function MessageSkeleton() {
-  return (
-    <div className="space-y-3 py-2">
-      <Skeleton className="h-3 w-3/4" />
-      <Skeleton className="h-3 w-1/2" />
-      <Skeleton className="h-3 w-5/6" />
-    </div>
-  );
-}
-
-/** A horizontal card skeleton for thread history chips. */
-export function ThreadChipSkeleton() {
-  return (
-    <div className="flex gap-2">
-      {[1, 2, 3].map((i) => (
-        <Skeleton key={i} className="h-[56px] w-[160px] shrink-0 rounded-lg" />
-      ))}
-    </div>
-  );
-}
-
-/** Full-chat loading state with multiple message skeletons. */
 export function ChatLoadingSkeleton() {
   return (
     <div className="space-y-6 px-4 py-6">
-      {/* Assistant intro */}
       <div className="space-y-3">
         <Skeleton className="h-3 w-2/3" />
         <Skeleton className="h-3 w-1/2" />
       </div>
-      {/* User message */}
       <div className="flex justify-end">
         <Skeleton className="h-10 w-48 rounded-2xl rounded-br-md" />
       </div>
-      {/* Assistant reply */}
       <div className="space-y-3">
         <Skeleton className="h-3 w-5/6" />
         <Skeleton className="h-3 w-3/4" />

@@ -134,14 +134,12 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     const results: SearchResult[] = [];
     const lowerQuery = query.toLowerCase().trim();
 
-    // 1. Match Pages
     STATIC_ITEMS.forEach(item => {
       if (item.title.toLowerCase().includes(lowerQuery)) {
         results.push(item);
       }
     });
 
-    // 2. Match Documents
     documents.forEach(doc => {
       if (doc.name.toLowerCase().includes(lowerQuery)) {
         results.push({
@@ -155,7 +153,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       }
     });
 
-    // 3. Match Threads
     threads.forEach(thread => {
       if (thread.title.toLowerCase().includes(lowerQuery)) {
         results.push({

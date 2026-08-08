@@ -386,7 +386,6 @@ export default function UploadPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 space-y-12">
-      {/* ── HEADER ── */}
       <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between px-2">
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
@@ -405,7 +404,6 @@ export default function UploadPage() {
       </div>
 
       <div className="grid gap-10 lg:grid-cols-[1fr_400px]">
-        {/* ── DOCUMENT LIST ── */}
         <div className="space-y-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center bg-slate-950/20 p-2 rounded-2xl border border-white/5">
              <div className="relative flex-1">
@@ -502,7 +500,6 @@ export default function UploadPage() {
           </div>
         </div>
 
-        {/* ── UPLOAD AREA ── */}
         <aside className="space-y-8">
            <div className={`relative flex min-h-[440px] flex-col items-center justify-center rounded-[3rem] border-2 border-dashed border-white/10 bg-slate-950/40 px-8 py-16 text-center transition-all ${dragActive ? "border-cyan-400 bg-cyan-400/5 ring-8 ring-cyan-400/5" : "hover:border-white/20 hover:bg-slate-950/60 shadow-2xl shadow-black/20"}`}
                 onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}

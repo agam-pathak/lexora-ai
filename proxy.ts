@@ -38,7 +38,6 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // API routes get a 401 JSON response
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
       { error: "Authentication is required." },
@@ -46,7 +45,6 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  // Page routes redirect to the auth page
   const authUrl = request.nextUrl.clone();
   authUrl.pathname = "/auth";
   authUrl.searchParams.set("redirect", `${pathname}${request.nextUrl.search}`);

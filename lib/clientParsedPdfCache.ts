@@ -41,7 +41,6 @@ export function cacheParsedPdfDocument(
 
     window.sessionStorage.setItem(toStorageKey(documentId), serialized);
   } catch {
-    // Ignore storage failures and keep the in-memory cache.
   }
 }
 

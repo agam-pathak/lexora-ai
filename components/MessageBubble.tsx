@@ -32,7 +32,6 @@ export default function MessageBubble({
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Extract followups
   let mainText = text;
   let followups: string[] = [];
 

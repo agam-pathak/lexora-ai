@@ -4,7 +4,6 @@ import { ArrowLeft } from "lucide-react";
 export default function ProfileLoading() {
   return (
     <div className="flex h-full flex-col">
-      {/* ── Sub-Header ── */}
       <div className="relative z-40 shrink-0 border-b border-white/[0.06] bg-slate-950/40 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
@@ -22,7 +21,6 @@ export default function ProfileLoading() {
       <div className="flex-1 overflow-y-auto w-full">
         <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
           
-          {/* ── User Overview Banner Skeleton ── */}
           <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-slate-950/40 p-8">
              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="flex items-center gap-6">

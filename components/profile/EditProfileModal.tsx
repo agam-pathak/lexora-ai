@@ -38,7 +38,6 @@ export default function EditProfileModal({
       const result = await updateProfile(name, avatar);
       if (result.success) {
         setIsOpen(false);
-        // Fully refresh the app shell to reload the session & avatar
         window.location.reload();
       } else {
         alert(result.error);

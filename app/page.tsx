@@ -17,7 +17,6 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-16">
-      {/* ── HERO SECTION ── */}
       <section className="relative overflow-hidden rounded-[3rem] border border-white/[0.08] bg-slate-950/40 p-8 sm:p-16 shadow-2xl backdrop-blur-3xl ring-1 ring-white/[0.03]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(103,232,249,0.15),transparent_60%)] pointer-events-none" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-slate-950/20 to-transparent pointer-events-none" />
@@ -59,7 +58,6 @@ export default async function HomePage() {
             </div>
           </div>
 
-          {/* Metric Grid */}
           <div className="grid grid-cols-2 gap-5 reveal-rise reveal-delay-400">
             {[
               { icon: ShieldCheck, title: "Grounded", sub: "Evidence Core", col: "text-cyan-400", bg: "bg-cyan-400/10" },
@@ -79,7 +77,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── LIVE ACTIVITY FEED ── */}
       <section className="grid gap-12 lg:grid-cols-[1fr_400px]">
         <div className="space-y-12">
            <div className="space-y-4 reveal-rise">
@@ -140,7 +137,6 @@ export default async function HomePage() {
         </aside>
       </section>
 
-      {/* ── SECURITY COMPLIANCE FOOTER ── */}
       <footer className="border-t border-white/5 pt-12 pb-24">
          <div className="grid gap-12 md:grid-cols-4">
             <div className="space-y-6">

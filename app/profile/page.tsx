@@ -28,14 +28,13 @@ export default async function ProfilePage() {
   const cookieStore = await cookies();
   const avatarUrl = cookieStore.get("lexora_avatar")?.value || "/avatars/avatar1.png";
 
-  // Parallel fetch stats
   const [documents, conversations, scholarSessions] = await Promise.all([
     getDocuments(session.userId),
     getConversationSummaries(session.userId),
     getUserSessions(session.userId)
   ]);
 
-  const joinDate = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }); // Mocking since users table isn't directly exposed here, but sufficient for UI.
+  const joinDate = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   const docCount = documents.length;
   const chunkCount = documents.reduce((acc, doc) => acc + (doc.chunkCount || 0), 0);
@@ -44,7 +43,6 @@ export default async function ProfilePage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* ── Sub-Header ── */}
       <div className="relative z-40 shrink-0 border-b border-white/[0.06] bg-slate-950/40 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
@@ -71,7 +69,6 @@ export default async function ProfilePage() {
       <div className="flex-1 overflow-y-auto w-full">
         <div className="mx-auto max-w-5xl px-6 py-10 space-y-8">
           
-          {/* ── User Overview Banner ── */}
           <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-slate-950/40 p-8 shadow-2xl backdrop-blur-xl ring-1 ring-white/[0.03]">
              <div className="absolute right-0 top-0 -mr-20 -mt-20 h-64 w-64 rounded-full bg-cyan-500/10 blur-[80px]" />
              <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -103,10 +100,8 @@ export default async function ProfilePage() {
              </div>
           </div>
 
-          {/* ── Usage Metrics Grid ── */}
           <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-400 pt-4">Usage Analytics</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-             {/* Documents */}
              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-md transition hover:bg-white/[0.04]">
                 <div className="mb-4 flex items-center justify-between">
                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-300">
@@ -119,7 +114,6 @@ export default async function ProfilePage() {
                 <p className="mt-3 text-[10px] text-slate-600">{chunkCount} total vector chunks stored</p>
              </div>
 
-             {/* Chats */}
              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-md transition hover:bg-white/[0.04]">
                 <div className="mb-4 flex items-center justify-between">
                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-300">
@@ -132,7 +126,6 @@ export default async function ProfilePage() {
                 <p className="mt-3 text-[10px] text-slate-600">Across your document library</p>
              </div>
 
-             {/* Scholar Assessments */}
              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-md transition hover:bg-white/[0.04]">
                 <div className="mb-4 flex items-center justify-between">
                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-300">
@@ -145,7 +138,6 @@ export default async function ProfilePage() {
                 <p className="mt-3 text-[10px] text-slate-600">Lexora Omni-Exam Strategist</p>
              </div>
 
-             {/* Vector Core Limit */}
              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur-md transition hover:bg-white/[0.04]">
                 <div className="mb-4 flex items-center justify-between">
                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300">

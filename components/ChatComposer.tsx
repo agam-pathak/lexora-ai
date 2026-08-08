@@ -47,7 +47,6 @@ export default function ChatComposer({
     el.style.height = `${next}px`;
   }, []);
 
-  // Re-measure whenever the question value changes (including clear-on-send)
   useEffect(() => {
     autoResize();
   }, [question, autoResize]);
