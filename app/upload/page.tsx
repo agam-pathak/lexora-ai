@@ -36,9 +36,12 @@ type UploadStage =
   | "idle"
   | "analyzing"
   | "uploading"
+  | "queued"
+  | "processing"
   | "indexing"
   | "ready"
   | "error";
+type UploadJobStatus = "queued" | "processing" | "ready" | "failed";
 
 function uploadFileToSignedUrl(
   signedUrl: string,
@@ -115,12 +118,20 @@ export default function UploadPage() {
     try {
       const response = await fetch("/api/files", { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to load indexed documents.");
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load indexed documents.");
+      }
+
+      const nextDocuments = data.files ?? [];
       startTransition(() => {
-        setDocuments(data.files ?? []);
+        setDocuments(nextDocuments);
       });
+      return nextDocuments as IndexedDocument[];
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load documents.");
+      const message =
+        error instanceof Error ? error.message : "Unable to load documents.";
+      setErrorMessage(message);
+      return [] as IndexedDocument[];
     }
   }
 
@@ -135,6 +146,51 @@ export default function UploadPage() {
     if (file.type !== "application/pdf") { setSelectedFile(null); setErrorMessage("Only PDF files are allowed."); return; }
     if (file.size > MAX_UPLOAD_BYTES) { setSelectedFile(null); setErrorMessage("The PDF exceeds the 25 MB upload limit."); return; }
     setSelectedFile(file);
+  }
+
+  async function pollUploadJob(jobId: string): Promise<IndexedDocument | null> {
+    const deadline = Date.now() + 60_000;
+
+    while (Date.now() < deadline) {
+      const response = await fetch(
+        `/api/upload/status?jobId=${encodeURIComponent(jobId)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Indexing status is unavailable.");
+      }
+
+      const jobStatus = payload.job?.status as UploadJobStatus | undefined;
+      const jobError = typeof payload.job?.error === "string" ? payload.job.error : "";
+
+      if (jobStatus === "ready") {
+        const files = await loadDocuments();
+        const newestDocument = files[0] ?? null;
+        setLastIndexedDocument(newestDocument);
+        setStatusMessage("Document uploaded and indexed successfully.");
+        return newestDocument;
+      }
+
+      if (jobStatus === "failed") {
+        throw new Error(jobError || "Background indexing failed.");
+      }
+
+      const nextStage: UploadStage =
+        jobStatus === "processing" ? "processing" : "queued";
+      setUploadStage(nextStage);
+      setUploadProgress((current) => (current >= 96 ? current : current + 4));
+      setStatusMessage(
+        jobStatus === "processing"
+          ? "Indexing in progress…"
+          : "Upload received and queued for indexing…",
+      );
+
+      await new Promise((resolve) => window.setTimeout(resolve, 2500));
+    }
+
+    throw new Error("Indexing did not complete within the expected time.");
   }
 
   async function uploadFile() {
@@ -209,6 +265,16 @@ export default function UploadPage() {
           throw new Error(finalizeData.error || "Upload failed.");
         }
 
+        if (finalizeResponse.status === 202 && finalizeData.jobId) {
+          setStatusMessage("Upload accepted. Indexing in progress…");
+          await pollUploadJob(finalizeData.jobId);
+          setUploadStage("ready");
+          setUploadProgress(100);
+          setSelectedFile(null);
+          await loadDocuments();
+          return;
+        }
+
         data = finalizeData;
         if (parsedPdf && finalizeData.document?.id) {
           cacheParsedPdfDocument(finalizeData.document.id, parsedPdf);
@@ -279,6 +345,27 @@ export default function UploadPage() {
               if (request.status < 200 || request.status >= 300) {
                 reject(new Error(payload.error || "Upload failed."));
                 return;
+              }
+
+              if (request.status === 202 && payload.jobId) {
+                void pollUploadJob(payload.jobId)
+                  .then(() => {
+                    setUploadStage("ready");
+                    setUploadProgress(100);
+                    setSelectedFile(null);
+                    void loadDocuments();
+                  })
+                  .catch((pollError) => {
+                    setErrorMessage(
+                      pollError instanceof Error
+                        ? pollError.message
+                        : "Upload failed unexpectedly.",
+                    );
+                    setUploadStage("error");
+                  })
+                  .finally(() => {
+                    setUploading(false);
+                  });
               }
 
               resolve(payload);
@@ -530,7 +617,17 @@ export default function UploadPage() {
               {uploading && (
                 <div className="mt-8 w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left">
                   <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-                    <span>{uploadStage === "indexing" ? "Indexing" : "Uploading"}</span>
+                    <span>
+                      {uploadStage === "analyzing"
+                        ? "Analyzing"
+                        : uploadStage === "queued"
+                          ? "Queued"
+                          : uploadStage === "processing"
+                            ? "Processing"
+                            : uploadStage === "indexing"
+                              ? "Indexing"
+                              : "Uploading"}
+                    </span>
                     <span>{uploadProgress}%</span>
                   </div>
                   <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
@@ -542,9 +639,13 @@ export default function UploadPage() {
                   <p className="mt-3 text-xs text-slate-400">
                     {uploadStage === "analyzing"
                       ? "Reading searchable text locally in your browser before upload."
-                      : uploadStage === "indexing"
-                      ? "Parsing pages, running OCR when needed, and preparing retrieval vectors."
-                      : "Streaming the PDF into the private workspace."}
+                      : uploadStage === "queued"
+                        ? "The upload is accepted and waiting for an available indexing worker."
+                        : uploadStage === "processing"
+                          ? "The document is being parsed and embedded in the background."
+                          : uploadStage === "indexing"
+                            ? "Parsing pages, running OCR when needed, and preparing retrieval vectors."
+                            : "Streaming the PDF into the private workspace."}
                   </p>
                 </div>
               )}

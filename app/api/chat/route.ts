@@ -7,7 +7,12 @@ import {
   persistConversationExchange,
   summarizeConversation,
 } from "@/lib/conversations";
-import { CHAT_MODEL, getGroqClient } from "@/lib/embeddings";
+import {
+  CHAT_MODEL,
+  FALLBACK_CHAT_MODEL,
+  getGroqClient,
+} from "@/lib/embeddings";
+import { checkRateLimit, CHAT_RATE_LIMIT, getClientIp } from "@/lib/rate-limit";
 import { buildContext, retrieveRelevantChunks, toChatSources } from "@/lib/search";
 import type { ClientChatChunkPayload, RetrievedChunk } from "@/lib/types";
 import { getDocument, getDocuments } from "@/lib/vectorStore";
@@ -63,6 +68,37 @@ function buildExtractiveFallbackAnswer(
 
 function sseEvent(data: Record<string, unknown>): string {
   return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+function isUnavailableModelError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const responseError =
+    "error" in error && error.error && typeof error.error === "object"
+      ? error.error
+      : null;
+  const code =
+    responseError && "code" in responseError && typeof responseError.code === "string"
+      ? responseError.code
+      : "";
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : responseError &&
+          "message" in responseError &&
+          typeof responseError.message === "string"
+        ? responseError.message.toLowerCase()
+        : "";
+
+  return (
+    ("status" in error && error.status === 404) ||
+    code === "model_not_found" ||
+    (message.includes("model") &&
+      (message.includes("does not exist") ||
+        message.includes("do not have access")))
+  );
 }
 
 function stripFollowupsBlock(text: string) {
@@ -154,6 +190,29 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Authentication is required." },
         { status: 401 },
+      );
+    }
+
+    const clientIp = getClientIp(request);
+    const chatRateLimit = checkRateLimit(
+      `chat:${clientIp}`,
+      CHAT_RATE_LIMIT.maxRequests,
+      CHAT_RATE_LIMIT.windowMs,
+    );
+
+    if (!chatRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Too many chat requests. Please wait a moment and try again.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, Math.ceil(chatRateLimit.retryAfterMs / 1000)),
+            ),
+          },
+        },
       );
     }
 
@@ -316,12 +375,33 @@ export async function POST(request: Request) {
           let fullAnswer = "";
 
           try {
-            const completion = await groq.chat.completions.create({
-              model: CHAT_MODEL,
-              temperature: 0.2,
-              stream: true,
-              messages: chatMessages,
-            });
+            let completion;
+
+            try {
+              completion = await groq.chat.completions.create({
+                model: CHAT_MODEL,
+                temperature: 0.2,
+                stream: true,
+                messages: chatMessages,
+              });
+            } catch (modelError) {
+              if (
+                CHAT_MODEL === FALLBACK_CHAT_MODEL ||
+                !isUnavailableModelError(modelError)
+              ) {
+                throw modelError;
+              }
+
+              console.warn(
+                `Groq model "${CHAT_MODEL}" is unavailable; retrying with "${FALLBACK_CHAT_MODEL}".`,
+              );
+              completion = await groq.chat.completions.create({
+                model: FALLBACK_CHAT_MODEL,
+                temperature: 0.2,
+                stream: true,
+                messages: chatMessages,
+              });
+            }
 
             for await (const chunk of completion) {
               const delta = chunk.choices[0]?.delta?.content;

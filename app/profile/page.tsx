@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireSession } from "@/lib/auth";
+import { findUserById, requireSession } from "@/lib/auth";
 import { getDocuments } from "@/lib/vectorStore";
 import { getConversationSummaries } from "@/lib/conversations";
 import { getUserSessions } from "@/lib/scholar/db";
@@ -28,13 +28,16 @@ export default async function ProfilePage() {
   const cookieStore = await cookies();
   const avatarUrl = cookieStore.get("lexora_avatar")?.value || "/avatars/avatar1.png";
 
-  const [documents, conversations, scholarSessions] = await Promise.all([
+  const [documents, conversations, scholarSessions, userRecord] = await Promise.all([
     getDocuments(session.userId),
     getConversationSummaries(session.userId),
-    getUserSessions(session.userId)
+    getUserSessions(session.userId),
+    findUserById(session.userId)
   ]);
 
-  const joinDate = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const joinDate = userRecord?.createdAt
+    ? new Date(userRecord.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   const docCount = documents.length;
   const chunkCount = documents.reduce((acc, doc) => acc + (doc.chunkCount || 0), 0);

@@ -4,8 +4,15 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
+import { enqueueIndexJob, triggerQueuedIndexProcessing } from "@/lib/indexing-queue";
 import { coerceParsedPdfDocument } from "@/lib/parsedPdf";
 import {
+  checkRateLimit,
+  getClientIp,
+  UPLOAD_RATE_LIMIT,
+} from "@/lib/rate-limit";
+import {
+  ensurePrivateUploadAvailable,
   persistUserUpload,
   resolveUserUploadUrl,
 } from "@/lib/storage";
@@ -73,6 +80,31 @@ export async function POST(request: Request) {
       );
     }
 
+    const clientIp = getClientIp(request);
+    const uploadRateLimit = checkRateLimit(
+      `upload:${clientIp}`,
+      UPLOAD_RATE_LIMIT.maxRequests,
+      UPLOAD_RATE_LIMIT.windowMs,
+    );
+
+    const asyncIndexingEnabled = process.env.LEXORA_ASYNC_INDEXING === "true";
+
+    if (!uploadRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Too many upload attempts. Please try again in a moment.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, Math.ceil(uploadRateLimit.retryAfterMs / 1000)),
+            ),
+          },
+        },
+      );
+    }
+
     const contentType = request.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {
@@ -105,6 +137,30 @@ export async function POST(request: Request) {
         return NextResponse.json(
           { error: "The PDF exceeds the 25 MB upload limit." },
           { status: 413 },
+        );
+      }
+
+      await ensurePrivateUploadAvailable(session.userId, fileName);
+
+      if (asyncIndexingEnabled) {
+        const job = await enqueueIndexJob({
+          userId: session.userId,
+          name,
+          fileName,
+          fileUrl: resolveUserUploadUrl(session.userId, fileName),
+          sizeBytes,
+          parsedPdf,
+        });
+
+        void triggerQueuedIndexProcessing();
+
+        return NextResponse.json(
+          {
+            status: "queued",
+            message: "Upload accepted and indexing is running in the background.",
+            jobId: job.id,
+          },
+          { status: 202 },
         );
       }
 
@@ -175,6 +231,30 @@ export async function POST(request: Request) {
       buffer,
       uploadedFile.type || "application/pdf",
     );
+
+    await ensurePrivateUploadAvailable(session.userId, safeFileName);
+
+    if (asyncIndexingEnabled) {
+      const job = await enqueueIndexJob({
+        userId: session.userId,
+        name: getDisplayName(uploadedFile.name),
+        fileName: safeFileName,
+        fileUrl,
+        sizeBytes: buffer.byteLength,
+        parsedPdf,
+      });
+
+      void triggerQueuedIndexProcessing();
+
+      return NextResponse.json(
+        {
+          status: "queued",
+          message: "Upload accepted and indexing is running in the background.",
+          jobId: job.id,
+        },
+        { status: 202 },
+      );
+    }
 
     const document = await indexDocument({
       userId: session.userId,

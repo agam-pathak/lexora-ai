@@ -10,7 +10,7 @@ Lexora AI is a Next.js 16 document intelligence workspace built around a retriev
 - `react-pdf` for document viewing
 - `pdf-parse` for PDF text extraction
 - Groq embeddings when available, with local hashed embedding fallback
-- Groq chat completions with `llama-3.1-8b-instant`
+- Groq chat completions with `openai/gpt-oss-20b` by default (overridable with `GROQ_CHAT_MODEL`)
 - Supabase-backed users, document metadata, conversations, and pgvector chunk search when configured
 - Local filesystem vector index stored under `.lexora/`
 - Signed httpOnly sessions, with user persistence optionally backed by Supabase
@@ -35,10 +35,11 @@ Create `.env.local` from `.env.example` and set:
 
 ```bash
 GROQ_API_KEY=your_groq_api_key
-GROQ_CHAT_MODEL=llama-3.1-8b-instant
+GROQ_CHAT_MODEL=openai/gpt-oss-20b
 GROQ_EMBEDDING_MODEL=nomic-embed-text-v1_5
 LEXORA_EMBEDDINGS_PROVIDER=auto
 LEXORA_AUTH_SECRET=change-this-to-a-long-random-secret
+LEXORA_ASYNC_INDEXING=false
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 SUPABASE_STORAGE_BUCKET=your_private_bucket_name
@@ -61,6 +62,7 @@ Open `http://localhost:3000`.
 - `/chat` opens the two-panel document viewer and chat workspace
 - `/auth` handles sign in, sign up, forgot password, and reset
 - `/api/upload` handles secure PDF upload and indexing
+- `/api/upload/status` tracks queued or in-flight indexing jobs
 - `/api/files` returns indexed documents
 - `/api/files/serve` streams protected PDFs from private storage
 - `/api/index` rebuilds the vector index
@@ -74,7 +76,9 @@ Open `http://localhost:3000`.
 - When Supabase is configured, users, document manifests, notes/bookmarks, conversations, and chunk vectors are stored in Postgres.
 - When `SUPABASE_STORAGE_BUCKET` is also configured, uploaded PDFs are mirrored into Supabase Storage and restored locally on demand for indexing and serving.
 - Uploaded PDFs are stored outside the public web root and served through an authenticated route.
+- Set `LEXORA_ASYNC_INDEXING=true` to enqueue uploads for background indexing and poll `/api/upload/status` while the job is processing.
 - If your Groq account does not expose embeddings, Lexora AI automatically falls back to `local-hash-v1` for indexing and retrieval.
 - The chat prompt is grounded strictly to retrieved document context.
+- If a configured Groq chat model is unavailable, Lexora retries with `openai/gpt-oss-20b` before using its extractive fallback.
 - Localhost password reset returns a preview recovery link because no mail provider is configured in this project.
 - If Supabase is not configured, chunk vectors still live under `.lexora/`.

@@ -79,6 +79,18 @@ export function isSupabaseUploadStorageConfigured() {
   return Boolean(SUPABASE_UPLOADS_BUCKET) && isSupabaseConfigured();
 }
 
+export function ensureProductionStorageReady() {
+  if (process.env.NODE_ENV === "production" && process.env.VERCEL === "1") {
+    const hasSupabase = isSupabaseConfigured();
+
+    if (!hasSupabase) {
+      throw new Error(
+        "Production deployments require Supabase configuration for persistent document storage.",
+      );
+    }
+  }
+}
+
 export async function ensureLexoraRoot() {
   await mkdir(LEXORA_ROOT, { recursive: true });
 }

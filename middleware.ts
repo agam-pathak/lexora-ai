@@ -15,14 +15,17 @@ function hasSessionCookie(request: NextRequest): boolean {
 const PROTECTED_PATHS = [
   "/upload",
   "/chat",
+  "/scholar",
+  "/profile",
   "/api/upload",
   "/api/chat",
   "/api/files",
   "/api/index",
   "/api/conversations",
+  "/api/scholar",
 ];
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_PATHS.some(
@@ -55,10 +58,13 @@ export const config = {
   matcher: [
     "/upload/:path*",
     "/chat/:path*",
+    "/scholar/:path*",
+    "/profile/:path*",
     "/api/upload/:path*",
     "/api/chat/:path*",
     "/api/files/:path*",
     "/api/index/:path*",
     "/api/conversations/:path*",
+    "/api/scholar/:path*",
   ],
 };

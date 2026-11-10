@@ -67,10 +67,14 @@ function getAuthSecret() {
   }
 
   if (process.env.NODE_ENV === "production") {
-    console.warn(
-      "LEXORA_AUTH_SECRET is missing. Using development fallback. Configure this in Vercel for production security.",
+    throw new Error(
+      "LEXORA_AUTH_SECRET is missing. Production sessions require a configured secret.",
     );
   }
+
+  console.warn(
+    "LEXORA_AUTH_SECRET is missing. Using the local development fallback for non-production environments.",
+  );
 
   return DEVELOPMENT_AUTH_SECRET;
 }
@@ -373,6 +377,25 @@ export async function getUsersCount() {
 
   const store = await readUsersStoreFromFile();
   return store.users.length;
+}
+
+export async function findUserById(userId: string) {
+  if (isSupabaseConfigured()) {
+    const supabaseUser = await findSupabaseUserById(userId);
+
+    if (supabaseUser) {
+      return supabaseUser;
+    }
+
+    const store = await readUsersStoreFromFile();
+    const fileUser =
+      store.users.find((user) => user.id === userId) ?? null;
+
+    return fileUser ? backfillUserToSupabase(fileUser) : null;
+  }
+
+  const store = await readUsersStoreFromFile();
+  return store.users.find((user) => user.id === userId) ?? null;
 }
 
 export async function findUserByEmail(email: string) {

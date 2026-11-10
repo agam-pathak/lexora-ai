@@ -1,7 +1,8 @@
 import Groq from "groq-sdk";
 
 export const CHAT_MODEL =
-  process.env.GROQ_CHAT_MODEL ?? "llama-3.1-8b-instant";
+  process.env.GROQ_CHAT_MODEL?.trim() || "llama-3.3-70b-versatile";
+export const FALLBACK_CHAT_MODEL = "llama-3.1-8b-instant";
 export const GROQ_EMBEDDING_MODEL =
   process.env.GROQ_EMBEDDING_MODEL ?? "nomic-embed-text-v1_5";
 export const LOCAL_EMBEDDING_MODEL = "local-hash-v1";

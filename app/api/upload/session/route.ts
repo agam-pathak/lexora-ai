@@ -3,8 +3,14 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
+import {
+  checkRateLimit,
+  getClientIp,
+  UPLOAD_RATE_LIMIT,
+} from "@/lib/rate-limit";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import {
+  ensureProductionStorageReady,
   getSupabaseUploadsBucketName,
   isSupabaseUploadStorageConfigured,
   resolveUserUploadObjectKey,
@@ -41,6 +47,31 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
+
+    const clientIp = getClientIp(request);
+    const sessionRateLimit = checkRateLimit(
+      `upload-session:${clientIp}`,
+      UPLOAD_RATE_LIMIT.maxRequests,
+      UPLOAD_RATE_LIMIT.windowMs,
+    );
+
+    if (!sessionRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Too many upload requests. Please try again in a moment.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(
+              Math.max(1, Math.ceil(sessionRateLimit.retryAfterMs / 1000)),
+            ),
+          },
+        },
+      );
+    }
+
+    ensureProductionStorageReady();
 
     if (!isSupabaseUploadStorageConfigured()) {
       return NextResponse.json(

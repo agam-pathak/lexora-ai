@@ -91,3 +91,13 @@ export const AUTH_RATE_LIMIT = {
   maxRequests: 6,
   windowMs: 60_000,
 } as const;
+
+export const UPLOAD_RATE_LIMIT = {
+  maxRequests: 10,
+  windowMs: 60_000,
+} as const;
+
+export const CHAT_RATE_LIMIT = {
+  maxRequests: 60,
+  windowMs: 60_000,
+} as const;
