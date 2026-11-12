@@ -40,12 +40,13 @@ GROQ_EMBEDDING_MODEL=nomic-embed-text-v1_5
 LEXORA_EMBEDDINGS_PROVIDER=auto
 LEXORA_AUTH_SECRET=change-this-to-a-long-random-secret
 LEXORA_ASYNC_INDEXING=false
+LEXORA_INDEXING_WORKER_SECRET=change-this-to-a-long-random-secret
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 SUPABASE_STORAGE_BUCKET=your_private_bucket_name
 ```
 
-If you want Supabase persistence, run the SQL in `supabase/schema.sql` in your Supabase project first. That script enables the `vector` extension in the `extensions` schema and creates the pgvector chunk-search RPC used by Lexora.
+If you want Supabase persistence, run the SQL in `supabase/schema.sql` in your Supabase project first. That script enables the `vector` extension in the `extensions` schema and creates the pgvector chunk-search RPC used by Lexora. For existing projects that enable async indexing, also run `supabase/indexing_queue_migration.sql`.
 
 ## Run
 
@@ -63,6 +64,7 @@ Open `http://localhost:3000`.
 - `/auth` handles sign in, sign up, forgot password, and reset
 - `/api/upload` handles secure PDF upload and indexing
 - `/api/upload/status` tracks queued or in-flight indexing jobs
+- `/api/internal/indexing/worker` securely processes one queued indexing job
 - `/api/files` returns indexed documents
 - `/api/files/serve` streams protected PDFs from private storage
 - `/api/index` rebuilds the vector index
@@ -76,7 +78,7 @@ Open `http://localhost:3000`.
 - When Supabase is configured, users, document manifests, notes/bookmarks, conversations, and chunk vectors are stored in Postgres.
 - When `SUPABASE_STORAGE_BUCKET` is also configured, uploaded PDFs are mirrored into Supabase Storage and restored locally on demand for indexing and serving.
 - Uploaded PDFs are stored outside the public web root and served through an authenticated route.
-- Set `LEXORA_ASYNC_INDEXING=true` to enqueue uploads for background indexing and poll `/api/upload/status` while the job is processing.
+- Set `LEXORA_ASYNC_INDEXING=true` to enqueue uploads for background indexing and poll `/api/upload/status` while the job is processing. In production, the queue is persisted in Supabase; apply `supabase/indexing_queue_migration.sql` before enabling it. Configure `LEXORA_INDEXING_WORKER_SECRET` and schedule an authenticated GET to `/api/internal/indexing/worker` (for example, once per minute) so queued or interrupted jobs are picked up. For Vercel Cron, set `CRON_SECRET` to the same value as `LEXORA_INDEXING_WORKER_SECRET`. The worker processes one job per request and safely claims it across concurrent instances.
 - If your Groq account does not expose embeddings, Lexora AI automatically falls back to `local-hash-v1` for indexing and retrieval.
 - The chat prompt is grounded strictly to retrieved document context.
 - If a configured Groq chat model is unavailable, Lexora retries with `openai/gpt-oss-20b` before using its extractive fallback.

@@ -42,6 +42,12 @@ type UploadStage =
   | "ready"
   | "error";
 type UploadJobStatus = "queued" | "processing" | "ready" | "failed";
+type UploadResponse = {
+  message?: string;
+  status?: string;
+  jobId?: string;
+  document?: IndexedDocument;
+};
 
 function uploadFileToSignedUrl(
   signedUrl: string,
@@ -148,8 +154,8 @@ export default function UploadPage() {
     setSelectedFile(file);
   }
 
-  async function pollUploadJob(jobId: string): Promise<IndexedDocument | null> {
-    const deadline = Date.now() + 60_000;
+  async function pollUploadJob(jobId: string): Promise<IndexedDocument> {
+    const deadline = Date.now() + 5 * 60_000;
 
     while (Date.now() < deadline) {
       const response = await fetch(
@@ -164,13 +170,23 @@ export default function UploadPage() {
 
       const jobStatus = payload.job?.status as UploadJobStatus | undefined;
       const jobError = typeof payload.job?.error === "string" ? payload.job.error : "";
+      const documentId =
+        typeof payload.job?.documentId === "string"
+          ? payload.job.documentId
+          : "";
 
       if (jobStatus === "ready") {
         const files = await loadDocuments();
-        const newestDocument = files[0] ?? null;
-        setLastIndexedDocument(newestDocument);
+        const indexedDocument =
+          files.find((document) => document.id === documentId) ?? null;
+
+        if (!indexedDocument) {
+          throw new Error("Indexing completed, but the document was not found in the library.");
+        }
+
+        setLastIndexedDocument(indexedDocument);
         setStatusMessage("Document uploaded and indexed successfully.");
-        return newestDocument;
+        return indexedDocument;
       }
 
       if (jobStatus === "failed") {
@@ -214,7 +230,7 @@ export default function UploadPage() {
 
       const inlineParsedPdf = getInlineParsedPdf(parsedPdf);
       let indexingInterval: number | null = null;
-      let data: { message?: string; document: IndexedDocument };
+      let data: UploadResponse;
 
       try {
         const sessionResponse = await fetch("/api/upload/session", {
@@ -265,20 +281,7 @@ export default function UploadPage() {
           throw new Error(finalizeData.error || "Upload failed.");
         }
 
-        if (finalizeResponse.status === 202 && finalizeData.jobId) {
-          setStatusMessage("Upload accepted. Indexing in progress…");
-          await pollUploadJob(finalizeData.jobId);
-          setUploadStage("ready");
-          setUploadProgress(100);
-          setSelectedFile(null);
-          await loadDocuments();
-          return;
-        }
-
         data = finalizeData;
-        if (parsedPdf && finalizeData.document?.id) {
-          cacheParsedPdfDocument(finalizeData.document.id, parsedPdf);
-        }
 
         if (
           parsedPdf &&
@@ -312,7 +315,7 @@ export default function UploadPage() {
           );
         }
 
-        data = await new Promise<{ message?: string; document: IndexedDocument }>((resolve, reject) => {
+        data = await new Promise<UploadResponse>((resolve, reject) => {
           const request = new XMLHttpRequest();
 
           request.open("POST", "/api/upload");
@@ -347,27 +350,6 @@ export default function UploadPage() {
                 return;
               }
 
-              if (request.status === 202 && payload.jobId) {
-                void pollUploadJob(payload.jobId)
-                  .then(() => {
-                    setUploadStage("ready");
-                    setUploadProgress(100);
-                    setSelectedFile(null);
-                    void loadDocuments();
-                  })
-                  .catch((pollError) => {
-                    setErrorMessage(
-                      pollError instanceof Error
-                        ? pollError.message
-                        : "Upload failed unexpectedly.",
-                    );
-                    setUploadStage("error");
-                  })
-                  .finally(() => {
-                    setUploading(false);
-                  });
-              }
-
               resolve(payload);
             } catch {
               reject(new Error("Upload failed unexpectedly."));
@@ -376,20 +358,33 @@ export default function UploadPage() {
 
           request.send(formData);
         });
-        if (parsedPdf && data.document?.id) {
-          cacheParsedPdfDocument(data.document.id, parsedPdf);
-        }
       } finally {
         if (indexingInterval) {
           window.clearInterval(indexingInterval);
         }
       }
 
+      if (data.status === "queued" && data.jobId) {
+        setStatusMessage("Upload accepted. Indexing in progress…");
+        data = {
+          message: "Document uploaded and indexed successfully.",
+          document: await pollUploadJob(data.jobId),
+        };
+      }
+
+      if (parsedPdf && data.document?.id) {
+        cacheParsedPdfDocument(data.document.id, parsedPdf);
+      }
+
+      if (!data.document) {
+        throw new Error("Upload completed without an indexed document.");
+      }
+
       setUploadStage("ready");
       setUploadProgress(100);
       setStatusMessage(data.message || "Document uploaded successfully.");
       addToast(data.message || "Document uploaded and indexed successfully.", "success", 5000);
-      setLastIndexedDocument(data.document);
+      setLastIndexedDocument(data.document ?? null);
       setSelectedFile(null);
       await loadDocuments();
     } catch (error) {

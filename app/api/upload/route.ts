@@ -11,6 +11,7 @@ import {
   getClientIp,
   UPLOAD_RATE_LIMIT,
 } from "@/lib/rate-limit";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   ensurePrivateUploadAvailable,
   persistUserUpload,
@@ -105,6 +106,20 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      asyncIndexingEnabled &&
+      process.env.NODE_ENV === "production" &&
+      !isSupabaseConfigured()
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Background indexing in production requires Supabase persistence. Configure Supabase before enabling LEXORA_ASYNC_INDEXING.",
+        },
+        { status: 503 },
+      );
+    }
+
     const contentType = request.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {
@@ -152,7 +167,9 @@ export async function POST(request: Request) {
           parsedPdf,
         });
 
-        void triggerQueuedIndexProcessing();
+        void triggerQueuedIndexProcessing().catch((error) => {
+          console.error("Background indexing trigger failed:", error);
+        });
 
         return NextResponse.json(
           {
@@ -244,7 +261,9 @@ export async function POST(request: Request) {
         parsedPdf,
       });
 
-      void triggerQueuedIndexProcessing();
+      void triggerQueuedIndexProcessing().catch((error) => {
+        console.error("Background indexing trigger failed:", error);
+      });
 
       return NextResponse.json(
         {

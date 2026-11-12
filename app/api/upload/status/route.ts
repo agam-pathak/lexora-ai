@@ -6,6 +6,17 @@ import { getIndexJob, listIndexJobsForUser } from "@/lib/indexing-queue";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function toPublicJob(job: NonNullable<Awaited<ReturnType<typeof getIndexJob>>>) {
+  return {
+    id: job.id,
+    status: job.status,
+    error: job.status === "failed" ? "Indexing failed. Please retry the upload." : undefined,
+    documentId: job.documentId,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -30,11 +41,11 @@ export async function GET(request: Request) {
         );
       }
 
-      return NextResponse.json({ job });
+      return NextResponse.json({ job: toPublicJob(job) });
     }
 
     const jobs = await listIndexJobsForUser(session.userId);
-    return NextResponse.json({ jobs });
+    return NextResponse.json({ jobs: jobs.map(toPublicJob) });
   } catch (error) {
     console.error("Upload status lookup failed:", error);
     return NextResponse.json(

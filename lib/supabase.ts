@@ -19,10 +19,12 @@ export const SUPABASE_TABLES = {
   conversations: "lexora_conversations",
   messages: "lexora_messages",
   chunks: "lexora_document_chunks",
+  indexingJobs: "lexora_indexing_jobs",
 } as const;
 
 export const SUPABASE_RPC = {
   matchChunks: "match_lexora_document_chunks",
+  claimIndexingJob: "claim_lexora_indexing_job",
 } as const;
 
 export function isSupabaseConfigured() {
